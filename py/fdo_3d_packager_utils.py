@@ -1,0 +1,59 @@
+"""Shared constants, paths and canonical writers for fdo-3d-packager.
+
+Import this from every step module rather than re-deriving RELEASE, the path
+layout or JSON writing conventions three different ways. See PRIMER.md A3 for
+the rules this module exists to enforce.
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+from pathlib import Path
+from typing import Any
+
+# No datetime.now() anywhere in this repo's generators (PRIMER.md A3). Bump
+# this by hand when the pipeline output is meant to change.
+RELEASE = "0.1.0"
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+DATA_RAW = REPO_ROOT / "data" / "raw"
+DIST = REPO_ROOT / "dist"
+
+# This repo does not publish RDF itself (that is fdo-squirrel's job
+# downstream), so unlike other repos in the family there is no
+# write_canonical_turtle() here -- see PRIMER.md A6.
+
+
+def ensure_dirs() -> None:
+    DATA_RAW.mkdir(parents=True, exist_ok=True)
+    DIST.mkdir(parents=True, exist_ok=True)
+
+
+def write_json(data: Any, path: Path) -> None:
+    """Deterministic JSON: sorted keys, no ASCII escaping, trailing newline."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    text = json.dumps(data, sort_keys=True, ensure_ascii=False, indent=2)
+    path.write_text(text + "\n", encoding="utf-8")
+
+
+def content_fingerprint(path: Path) -> str:
+    """SHA-256 hex digest of a file's bytes.
+
+    Matches the `distributions[].sha256` convention in fdo-squirrel's
+    MD.cff-schema.yaml (plain hex, no "sha256:" prefix there).
+    """
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def nothing_to_do(reason: str = "not implemented yet (S1 skeleton)") -> tuple[bool, str]:
+    """Standard S1 stub return value.
+
+    Every step module returns this until its real implementation (S2+)
+    lands. Keeps `python main.py` green and `--strict`-clean on a fresh
+    checkout, per S1's Abnahme in PRIMER.md.
+    """
+    return True, f"nothing to do ({reason})"

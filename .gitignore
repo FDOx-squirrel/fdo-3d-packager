@@ -1,0 +1,30 @@
+# --- Python ---
+**/__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# --- Virtual environments ---
+.venv/
+venv/
+env/
+ENV/
+
+# --- Editors / OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# --- Local, machine-specific config (mirrors fdo-squirrel's own pattern) ---
+config.local.json
+
+# --- Note ---
+# data/ and dist/ are part of the reproducible pipeline output and are NOT
+# ignored -- dist/ holds this repository's versioned, citable products
+# (see primer-repo skill). data/raw/ can hold large local scans or Sketchfab
+# downloads though; keep an eye on repo size before committing those.

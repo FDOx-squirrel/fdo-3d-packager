@@ -1,0 +1,26 @@
+cff-version: 1.2.0
+title: "fdo-3d-packager"
+message: >-
+  If you use this software, please cite it using the metadata from this
+  file.
+type: software
+authors:
+  - given-names: Florian
+    family-names: Thiery
+    affiliation: Research Squirrel Engineers Network
+    orcid: "https://orcid.org/0000-0002-3246-3531"
+repository-code: "https://github.com/FDOx-squirrel/fdo-3d-packager"
+abstract: >-
+  Packages a 3D model -- from Sketchfab or a local file -- into a FAIR
+  Digital Object (fdo:3DDataFDO) ready for ingest by fdo-squirrel: Blender
+  conversion, Nexus multiresolution build, MD.cff/CITATION.cff, and a bundle
+  ZIP in fdo-squirrel's expected layout.
+keywords:
+  - FAIR Digital Object
+  - 3D data
+  - cultural heritage
+  - photogrammetry
+license: MIT
+version: v0.1
+date-released: "2026-09-03"
+# doi: "10.5281/zenodo.XXXXXXX"  # TODO: add Zenodo DOI once minted

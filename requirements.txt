@@ -1,0 +1,16 @@
+# MD.cff / CITATION.cff are YAML (ingest/mdcff steps).
+pyyaml
+
+# Sketchfab Data/Download API (fetch step, S2).
+requests
+
+# Validate MD.cff against fdo-squirrel's MD.cff-schema.yaml (mdcff step, S5;
+# same library fdo-squirrel itself uses for the same schema, see its own
+# requirements.txt).
+jsonschema
+
+# Not pip-installable, external requirements documented in README.md:
+#   - Blender (headless), for the convert step (S3)
+#   - nxsbuild / nxscompress from cnr-isti-vclab/nexus, for the nexus step (S4)
+#   - a local fdo-squirrel checkout, for the build_fdo step (S7);
+#     see PRIMER.md Teil D for how it gets wired in
