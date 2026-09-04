@@ -444,6 +444,49 @@ gegen echtes Blender verifiziert (nächster Schritt: `python main.py --only
 convert` wiederholen, `dist/donaghmore-church-ruin/textures/` sollte jetzt
 6 Dateien enthalten, `preview.png` sollte deutlich heller/farbig sein).
 
+### Nachtrag 2026-09-04 (2) — `relink_images()` wirkungslos, Ansatz gewechselt
+
+`relink_images()` erneut gegen echtes Blender 5.2.1 LTS getestet: **keine
+Wirkung.** `preview.png` byte-für-byte identisch zum vorherigen (fehlerhaften)
+Lauf (mittlere Helligkeit 49.97/49.71/48.98, Max 69 — auf die Dezimalstelle
+gleich), dieselben sechs `Missing source file 'C:\material_N_baseColor.jpeg'`-
+Warnungen beim Export. Warum genau `bpy.data.images`-Manipulation hier nichts
+bewirkt, ist ungeklärt (Diagnose-Prints in `relink_images()` ergänzt für den
+nächsten Lauf, falls das noch relevant wird) — vermutlich löst Blenders seit
+4.0 in C++ implementierter OBJ-Exporter den Bildpfad nicht (mehr) einfach
+über das Python-sichtbare `image.filepath` zum Exportzeitpunkt auf.
+
+**Ansatz gewechselt, statt weiter an Blenders interner Pfad-Auflösung zu
+doktern:** `bpy.ops.wm.obj_export()` läuft jetzt mit `path_mode="STRIP"`
+statt `"COPY"` — Blender soll nur noch den Dateinamen pro Material in die
+`.mtl` schreiben, keinen Kopierversuch mehr unternehmen (dieser produzierte
+ohnehin nur irreführende Warnungen). Das eigentliche Kopieren übernimmt jetzt
+`step_convert.py` selbst: `_copy_textures_from_raw()` liest die
+`map_*`-Zeilen aus der von Blender geschriebenen `.mtl`, sucht jeden
+referenzierten Dateinamen unter `data/raw/<slug>/` (wo S2 garantiert alle
+Begleitdateien abgelegt hat) und kopiert ihn direkt nach
+`dist/<slug>/textures/` — komplett unabhängig davon, was Blender intern für
+Pfade verwendet. Fehlt eine referenzierte Textur tatsächlich (z. B. weil sie
+nie in `data/raw/` landete), wird das als `Warning:`-Meldung sichtbar statt
+still zu scheitern.
+
+Im Sandkasten gegen einen Fake-Blender verifiziert, der das reale
+Fehlerbild nachbildet (`.mtl` mit Dateinamen, aber keine kopierten Bytes):
+alle 6 echten Donaghmore-Texturen korrekt gefunden und byte-identisch
+kopiert; separat auch der Fall einer tatsächlich fehlenden Textur getestet
+(korrekte `Warning:`-Meldung, Zeile in der `.mtl` bleibt unverändert statt
+falsch auf `textures/` umgeschrieben zu werden). Zwei Läufe erzeugen
+identische `dist/`-Dateien.
+
+**Weiterhin offen:** ob damit auch `preview.png` korrekt eingefärbt wird,
+ist unklar — `_copy_textures_from_raw()` behebt das exportierte Paket
+(`dist/<slug>/textures/`), aber die *Render*-Farben hängen weiterhin davon
+ab, ob `relink_images()` (oder irgendein anderer Mechanismus) Blender zur
+Renderzeit die echten Pixel liefert. Falls `preview.png` nach diesem Fix
+weiterhin dunkel bleibt, ist das ein separater, noch ungelöster Punkt — die
+Diagnose-Prints in `relink_images()` sollten dafür beim nächsten Lauf
+zeigen, ob/wie viele Bilder überhaupt in `bpy.data.images` auftauchen.
+
 ---
 
 ## Teil D — Offene Punkte

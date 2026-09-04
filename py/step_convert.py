@@ -6,15 +6,18 @@ data/raw/source_info.json for `slug`/`model_file` (the S2->S3 handoff
 contract, see step_fetch.py:build_source_info). Invokes Blender as a
 subprocess running py/blender_convert_headless.py (migrated from
 blender_convert.py in the sketchfab_fdo_prototype, neighbouring chat),
-which imports the model, exports OBJ+MTL with copied textures
-(path_mode="COPY"), and renders a fixed-camera preview.png.
+which imports the model and exports OBJ+MTL (path_mode="STRIP" -- filenames
+only, no copy attempt) plus a fixed-camera preview.png.
 
-Blender's texture copy lands the image files next to model.obj/model.mtl
-under whatever names Blender chose (it can rename on collision, so this
-step diffs the output directory rather than assuming filenames) and moves
-them into textures/ afterwards, rewriting the .mtl's map_* lines to match
--- PRIMER.md A4: textures/ is classification_rules.yaml's `auxiliary` role,
-kept out of `documentation`.
+Befund 2026-09-04: Blender's own path_mode="COPY" turned out unreliable in
+a real run (every texture reported "missing", nothing copied -- see
+blender_convert_headless.py's docstring). This step now copies the
+textures itself: it reads the filenames model.mtl references and copies
+them from data/raw/<slug>/ (which step_fetch.py/S2 already guarantees is
+complete) into dist/<slug>/textures/, rewriting the .mtl to match --
+independent of whatever Blender's own path resolution did or didn't do.
+textures/ as its own folder is still intentional either way (PRIMER.md A4:
+classification_rules.yaml's `auxiliary` role, kept out of `documentation`).
 
 Requires a local Blender install (headless-capable), not pip-installable --
 see README.md. Not verified against a real Blender in this chat's sandbox
@@ -38,39 +41,53 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from py.fdo_3d_packager_utils import DATA_RAW, DIST, MTL_TEXTURE_KEYS, load_source_info
 
 
-def _organize_textures(out_dir: Path, obj_path: Path, mtl_path: Path, preview_path: Path) -> list[str]:
-    """Move every file Blender's path_mode="COPY" left in out_dir alongside
-    model.obj/model.mtl into out_dir/textures/, and rewrite the .mtl's
-    map_* lines to point there. Diff-based (everything in out_dir that is
-    not the .obj/.mtl/preview.png) rather than assuming Blender's chosen
-    filenames, since it can rename on collision."""
-    keep = {obj_path.name, mtl_path.name, preview_path.name}
-    texture_names = sorted(
-        p.name for p in out_dir.iterdir()
-        if p.is_file() and p.name not in keep
-    )
-    if not texture_names:
-        return []
+def _copy_textures_from_raw(model_dir_raw: Path, out_dir: Path, mtl_path: Path) -> tuple[list[str], list[str]]:
+    """Copy every texture model.mtl references from data/raw/<slug>/ into
+    out_dir/textures/, and rewrite the .mtl's map_* lines to point there.
 
+    Befund 2026-09-04: Blender's own path_mode="COPY" turned out unreliable
+    (every texture reported "Missing source file" and skipped, even after
+    explicitly relinking the image datablocks beforehand -- see
+    blender_convert_headless.py:relink_images() for what was tried and its
+    diagnostics). What *does* survive intact regardless: Blender still
+    writes the correct texture *filename* into each map_* line even when it
+    can't copy the bytes. So this reads those filenames back out of
+    model.mtl and copies them ourselves from model_dir_raw
+    (data/raw/<slug>/, which step_fetch.py/S2 already guarantees holds
+    every sibling file, textures included) -- independent of whatever
+    Blender's internal path resolution did or didn't do. Returns (copied
+    filenames, referenced-but-not-found filenames)."""
+    if not mtl_path.exists():
+        return [], []
+
+    by_name = {p.name: p for p in model_dir_raw.rglob("*") if p.is_file()}
     textures_dir = out_dir / "textures"
-    textures_dir.mkdir(exist_ok=True)
-    for name in texture_names:
-        (out_dir / name).rename(textures_dir / name)
 
-    texture_set = set(texture_names)
-    lines = mtl_path.read_text(encoding="utf-8").splitlines()
+    copied: list[str] = []
+    missing: list[str] = []
     new_lines = []
-    for line in lines:
+    for line in mtl_path.read_text(encoding="utf-8").splitlines():
         stripped = line.strip()
         parts = stripped.split(None, 1)
         if len(parts) == 2 and parts[0] in MTL_TEXTURE_KEYS:
             tokens = parts[1].split()
-            if tokens and tokens[-1] in texture_set:
-                tokens[-1] = f"textures/{tokens[-1]}"
-                line = f"{parts[0]} {' '.join(tokens)}"
+            if tokens:
+                # Strip whatever path Blender did or didn't write (STRIP
+                # mode should already leave a bare filename, but this is
+                # robust either way) -- only the filename is trustworthy.
+                tex_name = Path(tokens[-1]).name
+                source = by_name.get(tex_name)
+                if source:
+                    textures_dir.mkdir(exist_ok=True)
+                    shutil.copyfile(source, textures_dir / tex_name)
+                    copied.append(tex_name)
+                    tokens[-1] = f"textures/{tex_name}"
+                    line = f"{parts[0]} {' '.join(tokens)}"
+                else:
+                    missing.append(tex_name)
         new_lines.append(line)
     mtl_path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
-    return texture_names
+    return copied, missing
 
 
 def run(args: argparse.Namespace) -> tuple[bool, str]:
@@ -114,11 +131,15 @@ def run(args: argparse.Namespace) -> tuple[bool, str]:
         return False, f"Blender ran but did not produce {preview_path}"
 
     texture_names: list[str] = []
+    missing_textures: list[str] = []
     if mtl_path.exists():
-        texture_names = _organize_textures(out_dir, obj_path, mtl_path, preview_path)
+        texture_names, missing_textures = _copy_textures_from_raw(model_in.parent, out_dir, mtl_path)
 
     texture_note = f", {len(texture_names)} texture(s) -> textures/" if texture_names else ""
-    return True, f"converted {slug} -> {obj_path.relative_to(DIST.parent)}{texture_note}, {preview_path.name}"
+    message = f"converted {slug} -> {obj_path.relative_to(DIST.parent)}{texture_note}, {preview_path.name}"
+    if missing_textures:
+        message = "Warning: " + message + f" -- {len(missing_textures)} texture(s) referenced in model.mtl not found under {model_in.parent}: {', '.join(missing_textures)}"
+    return True, message
 
 
 if __name__ == "__main__":

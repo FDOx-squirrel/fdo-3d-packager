@@ -84,11 +84,29 @@ def relink_images(model_dir: Path) -> None:
 
     Fixed by matching on filename against everything under model_dir (the
     directory step_fetch.py/S2 already collected the model's sibling files
-    into) rather than trusting whatever path Blender computed."""
+    into) rather than trusting whatever path Blender computed.
+
+    Nachtrag 2026-09-04: after a real run, this had *zero* measurable
+    effect (identical preview.png, byte-for-byte, before and after this
+    function was added) -- so whatever is going wrong is not simply "wrong
+    path, otherwise normal datablock". Printing diagnostics below rather
+    than guessing again; step_convert.py (S3, Python side) now does its own
+    texture copy independent of this function and of Blender's OBJ-export
+    COPY mechanism entirely, so the *exported package* no longer depends on
+    this working -- but the *preview render* still does, since that needs
+    real pixel data loaded into `bpy.data.images`, not just a correct
+    filename in a .mtl.
+    """
     by_name = {p.name: p for p in model_dir.rglob("*") if p.is_file()}
+    print(f"[relink_images] model_dir={model_dir} candidate files={len(by_name)}")
+    relinked = 0
     for image in bpy.data.images:
         name = Path(image.filepath or image.name).name
         match = by_name.get(name)
+        print(
+            f"[relink_images] image.name={image.name!r} image.filepath={image.filepath!r} "
+            f"source={image.source!r} lookup_key={name!r} -> {'MATCH ' + str(match) if match else 'no match'}"
+        )
         if not match:
             continue
         resolved = str(match)
@@ -96,8 +114,10 @@ def relink_images(model_dir: Path) -> None:
         image.filepath_raw = resolved
         try:
             image.reload()
-        except RuntimeError:
-            pass  # still relinked for the exporter even if pixel reload fails
+            relinked += 1
+        except RuntimeError as exc:
+            print(f"[relink_images] reload() failed for {image.name!r}: {exc}")
+    print(f"[relink_images] relinked {relinked}/{len(bpy.data.images)} image datablock(s)")
 
 
 def mesh_bounds() -> tuple[mathutils.Vector, float]:
@@ -179,14 +199,17 @@ def main() -> None:
     import_model(in_path)
     relink_images(Path(in_path).resolve().parent)
 
-    # OBJ export with texture copy, for nxsbuild (S4). step_convert.py moves
-    # whatever lands next to model.obj into textures/ and rewrites the .mtl
-    # (PRIMER.md A4: textures/ -> auxiliary role in classification_rules.yaml).
+    # OBJ export: path_mode="STRIP" only asks Blender to declare which
+    # texture *name* belongs to which material -- not to copy any bytes.
+    # Nachtrag 2026-09-04: path_mode="COPY" turned out unreliable here (see
+    # relink_images() above); step_convert.py now does the actual texture
+    # copy itself afterwards, from data/raw/<slug>/ (which S2 already
+    # guarantees is complete) rather than trusting Blender's own copy.
     bpy.ops.wm.obj_export(
         filepath=obj_out,
         export_selected_objects=False,
         export_materials=True,
-        path_mode="COPY",
+        path_mode="STRIP",
     )
 
     if preview_out:
