@@ -527,6 +527,23 @@ Werte. Nächster Schritt: `python main.py --only convert` erneut, `preview.png`
 ansehen. Falls zu dunkel/hell, sind die drei Energiewerte am Anfang von
 `setup_camera_and_lights()` die Stellschraube.
 
+### Nachtrag 2026-09-04 (4) — bestätigt: S3 funktioniert jetzt end-to-end
+
+Von Flo verifiziert: `preview.png` zeigt jetzt plausibel beleuchtetes
+Mauerwerk mit Moos, korrekten Texturen, keine Über-/Unterbelichtung. Eigene
+Messung: mittlere Helligkeit `[68.75, 68.07, 65.75]` (vorher `~50/50/49`),
+Maximum `197` (vorher `69`) — deutlich heller, keine ausgebrannten Bereiche.
+Die drei aufeinanderfolgenden Bugs (fehlende Begleitdateien in S2, Blenders
+nicht kopierende Textur-Pfade, unterbeleuchtete `AREA`-Lichter) sind damit
+alle real gegen den Donaghmore-Fall verifiziert, nicht nur im Sandkasten
+simuliert. **S3 ist damit vollständig erledigt.**
+
+Weiterhin offen (kein Blocker, nur nicht geprüft): ob zwei aufeinanderfolgende
+`convert`-Läufe wirklich byte-identische `dist/`-Ausgaben liefern (A2 Punkt 2)
+— insbesondere `preview.png`s Rendering-Determinismus über Blender-Version/
+GPU-Treiber hinweg. Nicht dringend, da `preview.png` reines Anschauungsbild
+ist und nicht in die FDO-Metadaten (Checksums etc.) einfließt.
+
 ---
 
 ## Teil D — Offene Punkte
