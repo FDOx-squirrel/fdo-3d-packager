@@ -11,8 +11,8 @@ Beginn jedes Chats vollständig hochgeladen und am Ende zurückgeschrieben.
 
 | Repo | Org | Rolle |
 |---|---|---|
-| `fdo-squirrel` | Research-Squirrel-Engineers | Referenzimplementierung: liest ein FDO-Paket (ZIP), schreibt `fdo-metadata.ttl` |
-| `fdo-squirrel-registry` | Research-Squirrel-Engineers | Erntet von Zenodo (Concept-/Version-DOI), baut DCAT-Katalog, SHACL-Gate |
+| `fdo-squirrel` | FDOx-squirrel | Referenzimplementierung: liest ein FDO-Paket (ZIP), schreibt `fdo-metadata.ttl` |
+| `fdo-squirrel-registry` | FDOx-squirrel | Erntet von Zenodo (Concept-/Version-DOI), baut DCAT-Katalog, SHACL-Gate |
 | `fdo-squirrel-spec` | FDOx-squirrel | ReSpec-HTML-Doku des Metadatenformats |
 | `fdo-squirrel-md-generator` | FDOx-squirrel | Web-Generator für `MD.cff` |
 | `fdo-architecture` | FDOx-squirrel | Meta-Repo: `registry.yaml` + Mermaid-Übersicht der Familie |
@@ -75,6 +75,11 @@ Beginn jedes Chats vollständig hochgeladen und am Ende zurückgeschrieben.
   dass es gegen das Schema validiert. Genauer Einbindungsmechanismus (pip
   aus GitHub, Git-Submodule, oder Pfad-Konfiguration wie in
   `ingest/package_source.py` vorgesehen) ist noch offen, siehe Teil D.
+
+**Befund (geprüft 2026-09-04):** `fdo-squirrel` und `fdo-squirrel-registry`
+sind von `Research-Squirrel-Engineers` nach `FDOx-squirrel` umgezogen (die
+alte Org-URL liefert weiterhin `200`, ist aber nur noch GitHubs
+Auto-Weiterleitungsseite). Referenzen in `README.md` und hier korrigiert.
 
 ### A2 Zielbild
 
@@ -155,6 +160,7 @@ Eigenschaften, an denen sich ein Lauf messen lässt:
 | `distributions[]` vorbefüllen? | nein — `fdo-squirrel` klassifiziert selbst (`classification_rules.yaml`), wir liefern keine eigene Vorbefüllung. Lücken (siehe Viewer-Zeile) werden dort nachgebessert, nicht hier kompensiert | 2026-09-03 |
 | FDO-Build via `fdo-squirrel` | `dist/<slug>.zip` wird durch eine lokale `fdo-squirrel`-Instanz geschickt statt RDF-Erzeugung selbst nachzubauen (Muster: `fdo-squirrel-registry` S8) | 2026-09-03 |
 | Einbindungsmechanismus für `fdo-squirrel` | offen (pip aus GitHub? Git-Submodule? Pfad-Config?) — siehe Teil D | Vorschlag ausstehend |
+| `source_info.json`-Vertrag (S2→S3/S4/S5) | eine Datei, von `fetch` geschrieben: `slug`, `model_file` (Dateiname unter `data/raw/`), `title`/`description`/`creator`/`creator_profile`/`licence`/`licence_url`/`source_url`/`sketchfab_uid`/`source_note`, plus `todo_placeholders` (Liste fehlender Pflichtfelder). Bei `--local` ohne `--title`/`--creator`/`--licence` werden `"TODO: … not set"`-Platzhalter geschrieben und `fetch` gibt eine mit `Warning:` beginnende Meldung zurück — nicht fatal im Normallauf, aber `--strict` (= CI) schlägt fehl, bis die Felder gesetzt sind. `mdcff` (S5) soll den Bau verweigern, solange `todo_placeholders` nicht leer ist (Vorschlag, in S5 zu bestätigen) | 2026-09-04 |
 | Verhältnis zum künftigen Software-FDO-Packager (Git-Link → `fdo:SoftwareFDO`) | eigenes Repo (`fdo-software-packager`?), nicht dasselbe wie hier — `fetch`+`convert` sind fachlich verschieden (Sketchfab/Blender/Nexus vs. Git-Clone+Repo-Analyse), und A3 verlangt ohnehin Kopieren statt Referenzieren, ein gemeinsames Repo spart also keine Duplizierung, nur Übersicht. Was kopiert werden sollte, sobald das Schwester-Repo startet: MD.cff/CITATION.cff-Writer, Bundle-Layout, `build_fdo`-Schritt (S5–S7) | 2026-09-03, Vorschlag |
 
 ### A5 Was in welchem Chat hochgeladen wird
@@ -183,7 +189,7 @@ Nicht anwendbar in S1 — dieses Repo veröffentlicht selbst keine RDF-IRIs
 |---|---|---|---|---|
 | S0 | Festlegungen: Org, Name, Output-Format, PID-Konvention | fdo-3d-packager | – | erledigt 2026-09-03 |
 | S1 | Skeleton: Repo-Layout, `main.py`, Schritt-Stubs, `requirements.txt`, `LICENSE`, `CITATION.cff` | fdo-3d-packager | S0 | erledigt 2026-09-03 |
-| S2 | `fetch`-Schritt: `--sketchfab`/`--local` → `data/raw/` (aus dem Prototyp migriert) | fdo-3d-packager | S1 | offen |
+| S2 | `fetch`-Schritt: `--sketchfab`/`--local` → `data/raw/` (aus dem Prototyp migriert) | fdo-3d-packager | S1 | erledigt 2026-09-04 |
 | S3 | `convert`-Schritt: Blender → `dist/model.obj` + `preview.png` | fdo-3d-packager | S2 | offen |
 | S4 | `nexus`-Schritt: `nxsbuild`/`nxscompress` → `dist/model.nxs`/`.nxz` | fdo-3d-packager | S3 | offen |
 | S5 | `mdcff`-Schritt: `MD.cff` + `CITATION.cff` schreiben, gegen Schema validieren | fdo-3d-packager | S2, S4 | offen |
@@ -248,6 +254,54 @@ S1 reine Stubs sind): `python main.py --list`, `python main.py`,
 `python main.py --dry-run`, `python main.py --only bundle`, zweiter Lauf
 ohne Änderungen. Details in `PATCH-README.md` dieses Patches.
 
+## S2 — `fetch`
+
+**Ziel:** `--sketchfab URL` bzw. `--local PATH` liefert genau eine
+Modell-Datei unter `data/raw/<slug>.<ext>` plus `data/raw/source_info.json`
+als Übergabevertrag an S3–S5 (siehe A4).
+
+**Uploads für diesen Schritt:** `PRIMER.md` + Repo-Bundle (s. A5).
+
+**Substanz:**
+- `py/step_fetch.py`: `--sketchfab`-Pfad (Data-API-Metadaten, Download-API,
+  glTF/GLB-Archiv laden+entpacken, Aufräumen der Zwischenstände) und
+  `--local`-Pfad (Datei kopieren, Endung prüfen, Metadaten nur aus
+  CLI-Flags) aus `sketchfab_fdo_prototype` (Nachbar-Chat) migriert —
+  Zielformat aber `source_info.json` statt `metadata.yaml`, Zielordner
+  `data/raw/` statt `out/<slug>/`.
+- `main.py`: `--token`/`--title`/`--creator`/`--creator-profile`/
+  `--licence`/`--licence-url`/`--source-note` als globale Flags ergänzt
+  (vorher nur `--sketchfab`/`--local`), damit `python main.py --only fetch
+  ...` alle Metadaten-Overrides entgegennimmt, nicht nur der
+  Standalone-Aufruf `python py/step_fetch.py`.
+- `--strict`-Kopplung: fehlende Pflichtfelder bei `--local` erzeugen eine
+  mit `Warning:` beginnende Rückmeldung — `main.py`s bestehende
+  `--strict`-Logik (S1, unverändert) erkennt das automatisch und lässt den
+  Lauf fehlschlagen, ohne dass `step_fetch.py` selbst etwas von `--strict`
+  wissen muss.
+- `README.md`, alle `Research-Squirrel-Engineers`-Referenzen auf
+  `FDOx-squirrel` korrigiert (s. A1-Befund).
+
+**Abnahme:** `python main.py --only fetch --local <Datei>` läuft ohne
+Netzwerk; ohne `--title`/`--creator`/`--licence` Exit 0 im Normallauf, Exit 1
+mit `--strict`; mit allen drei Flags Exit 0 in beiden Modi. Zwei
+aufeinanderfolgende Läufe mit identischem Input erzeugen byte-identische
+`data/raw/<slug>.<ext>` und `data/raw/source_info.json`. `--sketchfab`-Pfad
+gegen simulierte HTTP-Antworten geprüft (kein `api.sketchfab.com` im
+Sandkasten-Netzwerk) — Metadaten-Extraktion, Download, Entpacken,
+Aufräumen der Zwischenstände (`_sketchfab_download/`, `archive.zip`,
+`gltf_src/`) laufen wie erwartet.
+
+### Erledigt 2026-09-04
+
+Wie oben. `data/raw/source_info.json`-Feldnamen sind jetzt der verbindliche
+Vertrag für S3 (`model_file`) und S5 (alle Metadatenfelder plus
+`todo_placeholders`) — siehe A4. Echter `--sketchfab`-Lauf gegen die echte
+API konnte im Sandkasten nicht verifiziert werden (Domain nicht im
+Netzwerk-Allowlist); nur simulierte HTTP-Antworten getestet. Erste echte
+Probe mit einem von Anne-Karolines Sketchfab-Links steht noch aus — sinnvoll
+als erster Schritt der nächsten Chat-Session vor S3.
+
 ---
 
 ## Teil D — Offene Punkte
@@ -261,7 +315,7 @@ ohne Änderungen. Details in `PATCH-README.md` dieses Patches.
   domänenspezifischen `distributions[]`-Rollen anpassen. Kein Schritt in
   diesem Repo, bis das Schwester-Repo tatsächlich startet.
 - **Wie wird `fdo-squirrel` in S7 eingebunden?** Drei Optionen, keine
-  geprüft: (a) `pip install git+https://github.com/Research-Squirrel-Engineers/fdo-squirrel`
+  geprüft: (a) `pip install git+https://github.com/FDOx-squirrel/fdo-squirrel`
   und `ingest.package_source`/`ingest.metadata_ingest` direkt importieren;
   (b) Git-Submodule, lokal per Pfad aufgerufen (näher an `main.py`s
   eigenem `--package`/`config.local.json`-Muster); (c) `fdo-squirrel` als

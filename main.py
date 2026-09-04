@@ -8,7 +8,7 @@
     python main.py --dry-run           print the plan, run nothing
     python main.py --strict            warnings become errors (this is what CI runs)
     python main.py --only fetch --sketchfab "https://sketchfab.com/3d-models/..."
-    python main.py --only fetch --local ./scans/rathealy_kiriengine.glb
+    python main.py --only fetch --local ./scans/rathealy_kiriengine.glb --title "..." --creator "..." --licence "..."
 
 See PRIMER.md for what each step does and why. Steps are implemented one
 module per step under py/, each independently runnable
@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import importlib
+import os
 import sys
 import time
 from dataclasses import dataclass, field
@@ -69,11 +70,20 @@ def build_arg_parser() -> argparse.ArgumentParser:
     ap.add_argument("--dry-run", action="store_true", help="Print the plan, run nothing.")
     ap.add_argument("--strict", action="store_true", help="Warnings become errors (this is what CI runs).")
 
-    # Source selection for the fetch step (implemented S2+). Accepted here
-    # already so --list/--dry-run document the eventual interface.
+    # Source selection for the fetch step (S2). Accepted here already so
+    # --list/--dry-run document the eventual interface even when fetch isn't
+    # the selected step.
     src = ap.add_mutually_exclusive_group()
     src.add_argument("--sketchfab", metavar="URL", help="Sketchfab model URL or UID (fetch step).")
     src.add_argument("--local", metavar="PATH", help="Local .glb/.gltf/.obj file (fetch step).")
+    ap.add_argument("--token", default=os.environ.get("SKETCHFAB_API_TOKEN"),
+                     help="Sketchfab API token (fetch step, --sketchfab only; default: env SKETCHFAB_API_TOKEN).")
+    ap.add_argument("--title", help="Metadata override/source for --local (fetch step).")
+    ap.add_argument("--creator", help="Metadata override/source for --local (fetch step).")
+    ap.add_argument("--creator-profile", help="Metadata override/source for --local (fetch step).")
+    ap.add_argument("--licence", help="Metadata override/source for --local (fetch step).")
+    ap.add_argument("--licence-url", help="Metadata override/source for --local (fetch step).")
+    ap.add_argument("--source-note", help="Free-text provenance note, e.g. 'KiriEngine, 180 photos, 2026-03' (fetch step).")
     return ap
 
 
