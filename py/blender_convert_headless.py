@@ -6,11 +6,10 @@ Invoked by step_convert.py as:
         --in <model.gltf|.glb|.obj> --obj-out <model.obj> --preview-out <preview.png>
 
 Migrated from blender_convert.py in the sketchfab_fdo_prototype (neighbouring
-chat), which itself was never run against a real Blender in a chat sandbox
-(no Blender available there either) -- so while this mirrors Blender's
-documented operator API as closely as the prototype did, the first real
-execution against actual Blender is still an open verification step for the
-person running it locally (see PRIMER.md S3).
+chat). First run against real Blender (5.2.1 LTS, Windows) on 2026-09-04:
+import, export and render all completed, but every texture was silently
+dropped (see relink_images() below for why and the fix) -- worth knowing if
+you diff this file against an even older copy floating around a chat.
 
 Imports the model (glTF/GLB via bpy.ops.import_scene.gltf, OBJ via
 bpy.ops.wm.obj_import), exports OBJ+MTL with copied textures
@@ -21,10 +20,9 @@ of this (moving copied textures into textures/, rewriting the .mtl).
 Determinism: render sample count and camera/light placement are derived
 only from the mesh's own bounding box (no randomness, no datetime), so
 preview.png *should* render identically for the same input across runs on
-the same machine/Blender version/GPU driver -- but this could not be
-verified without a real Blender, so treat it as a working assumption, not a
-proven guarantee, until checked against a real two-run comparison (PRIMER.md
-S3 Abnahme).
+the same machine/Blender version/GPU driver -- not yet checked with an
+actual two-run comparison though (this chat's sandbox has no Blender to
+run it with; PRIMER.md S3 records this as still open).
 """
 import math
 import sys
@@ -67,6 +65,39 @@ def import_model(path: str) -> None:
         raise ValueError(
             f"Unsupported input format: {suffix} (expected one of {sorted(MODEL_SUFFIXES)})"
         )
+
+
+def relink_images(model_dir: Path) -> None:
+    """Re-point every image datablock at the real file under model_dir.
+
+    Befund 2026-09-04 (first real run, Blender 5.2.1 LTS): the glTF
+    importer's relative image paths ("textures/foo.jpeg") get resolved
+    against bpy.data.filepath -- the *current .blend file's* location, via
+    Blender's "//" convention -- not against the imported .gltf's own
+    directory. Since this script never saves a .blend file, that base
+    directory does not exist, and Blender falls back to something useless
+    (observed: the OS drive root, e.g. "C:\\foo.jpeg", silently dropping the
+    "textures/" subfolder). The OBJ exporter's path_mode="COPY" then reports
+    "Missing source file" and skips every texture -- the model exports but
+    ends up untextured, which is also why the preview render came out
+    almost black (materials with no base colour).
+
+    Fixed by matching on filename against everything under model_dir (the
+    directory step_fetch.py/S2 already collected the model's sibling files
+    into) rather than trusting whatever path Blender computed."""
+    by_name = {p.name: p for p in model_dir.rglob("*") if p.is_file()}
+    for image in bpy.data.images:
+        name = Path(image.filepath or image.name).name
+        match = by_name.get(name)
+        if not match:
+            continue
+        resolved = str(match)
+        image.filepath = resolved
+        image.filepath_raw = resolved
+        try:
+            image.reload()
+        except RuntimeError:
+            pass  # still relinked for the exporter even if pixel reload fails
 
 
 def mesh_bounds() -> tuple[mathutils.Vector, float]:
@@ -146,6 +177,7 @@ def main() -> None:
 
     clear_scene()
     import_model(in_path)
+    relink_images(Path(in_path).resolve().parent)
 
     # OBJ export with texture copy, for nxsbuild (S4). step_convert.py moves
     # whatever lands next to model.obj into textures/ and rewrites the .mtl

@@ -410,6 +410,40 @@ dem Prototyp übernommen, dort ebenfalls nie gegen echtes Blender getestet)
 das Ergebnis (`dist/donaghmore-church-ruin/`) mit echten Augen/einem
 OBJ-Viewer prüfen, bevor S4 (Nexus) draufsetzt.
 
+### Nachtrag 2026-09-04 — erster echter Blender-Lauf, echter Bug
+
+Erster echter Lauf gegen Blender 5.2.1 LTS (Windows): Import (26 Meshes aus
+dem glTF, 7,93s), OBJ-Export und Preview-Render liefen alle durch
+(`python main.py --only convert`, 116,41s Gesamtlaufzeit) — aber alle sechs
+Texturen wurden beim Export übersprungen:
+
+    WARNING Missing source file 'C:\material_1_baseColor.jpeg', not copying
+    (× 6, je einmal pro Material)
+
+`dist/donaghmore-church-ruin/` enthielt danach nur `model.obj`+`model.mtl`+
+`preview.png`, kein `textures/`-Ordner — `preview.png` entsprechend fast
+schwarz (mittlere Helligkeit 50/255, Maximum 69/255: Materialien ohne
+Basisfarbe rendern dunkel).
+
+**Ursache:** Blenders glTF-Importer löst relative Bild-Pfade
+(`textures/foo.jpeg`) intern gegen `bpy.data.filepath` auf (Blenders
+`//`-Konvention — relativ zur *aktuell gespeicherten `.blend`-Datei*), nicht
+gegen das Verzeichnis der importierten `.gltf`. Da dieses Skript nie eine
+`.blend`-Datei speichert, existiert diese Basis nicht, und Blender fällt auf
+etwas Unbrauchbares zurück (beobachtet: die Laufwerkswurzel, `textures/`
+dabei komplett verschluckt). Der OBJ-Exporter (`path_mode="COPY"`) findet
+die Quelldatei dort folgerichtig nicht und kopiert nichts.
+
+**Fix:** `relink_images()` in `blender_convert_headless.py`, direkt nach
+`import_model()`: durchsucht das Modellverzeichnis (`data/raw/<slug>/`, das
+S2 ja bereits vollständig mit allen Begleitdateien befüllt) nach Dateien,
+deren Name zum Bild-Datenblock passt, und setzt `image.filepath`/
+`filepath_raw` explizit auf den gefundenen absoluten Pfad — unabhängig
+davon, was Blenders eigene Pfad-Auflösung ergeben hätte. Noch nicht erneut
+gegen echtes Blender verifiziert (nächster Schritt: `python main.py --only
+convert` wiederholen, `dist/donaghmore-church-ruin/textures/` sollte jetzt
+6 Dateien enthalten, `preview.png` sollte deutlich heller/farbig sein).
+
 ---
 
 ## Teil D — Offene Punkte
