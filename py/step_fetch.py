@@ -8,20 +8,37 @@ Not part of the default `python main.py` run; call it explicitly:
 
 S2: migrated from the sketchfab_fdo_prototype in the neighbouring chat --
 Sketchfab Data API metadata harvest + Download API request for --sketchfab,
-or a local-file copy/validate for --local. Writes exactly one model file to
-data/raw/<slug>.<ext> plus data/raw/source_info.json (the S2/S3/S4/S5
-handoff contract -- see build_source_info() docstring) and, for
---sketchfab, the raw API response to data/raw/sketchfab_meta.json for audit
-(matches the prototype's convention).
+or a local-file copy/validate for --local. Writes the model file plus every
+sibling file it references (see resolve_sibling_files()) to
+data/raw/<slug>/, and data/raw/source_info.json (the S2/S3/S4/S5 handoff
+contract -- see build_source_info() docstring) recording `model_file` as
+the path *relative to data/raw/*. For --sketchfab, the raw API response
+also goes to data/raw/sketchfab_meta.json for audit (matches the
+prototype's convention).
+
+Befund 2026-09-04 (first real --sketchfab run, "Donaghmore Church ruin"):
+the original version of this step copied only the .gltf file itself and
+silently dropped scene.bin (the actual mesh, referenced via
+buffers[].uri) and every textures/*.jpeg image (images[].uri) -- both of
+which every real Sketchfab glTF export splits out as separate files.
+Blender (S3) would have failed on every real model with a "file not
+found" error inside the .gltf's own relative-URI resolution. Fixed here by
+resolving and copying those siblings alongside the model file, preserving
+their relative sub-paths (e.g. textures/foo.jpeg) so the relative URIs
+inside the model keep resolving from its new location. .glb has no such
+siblings (self-contained binary); --local .obj can have the same problem
+via its mtllib/map_* references, fixed the same way.
 """
 from __future__ import annotations
 
 import argparse
 import json
 import re
+import shutil
 import sys
 import zipfile
 from pathlib import Path
+from urllib.parse import unquote
 
 import requests
 
@@ -30,11 +47,94 @@ import requests
 # (`python py/step_*.py` -- repo root is not on sys.path by default).
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from py.fdo_3d_packager_utils import DATA_RAW, ensure_dirs, write_json
+from py.fdo_3d_packager_utils import DATA_RAW, MTL_TEXTURE_KEYS, ensure_dirs, write_json
 
 SKETCHFAB_API = "https://api.sketchfab.com/v3"
 UID_RE = re.compile(r"([0-9a-f]{32})")
 MODEL_SUFFIXES = (".glb", ".gltf", ".obj")
+
+
+# --------------------------------------------------------------------------
+# Sibling-file resolution (Befund 2026-09-04, see module docstring)
+# --------------------------------------------------------------------------
+
+def _gltf_sibling_uris(gltf_path: Path) -> tuple[list[str], list[str]]:
+    """buffers[].uri / images[].uri that are external files (not embedded
+    data: URIs), as relative paths from gltf_path's own directory -- the
+    only place a .gltf's relative URIs are resolved against. .glb embeds
+    everything and is not routed here."""
+    doc = json.loads(gltf_path.read_text(encoding="utf-8"))
+    uris = [
+        unquote(entry["uri"])
+        for section in ("buffers", "images")
+        for entry in doc.get(section, [])
+        if entry.get("uri") and not entry["uri"].startswith("data:")
+    ]
+    existing = [u for u in uris if (gltf_path.parent / u).exists()]
+    missing = [u for u in uris if u not in existing]
+    return existing, missing
+
+
+def _obj_sibling_uris(obj_path: Path) -> tuple[list[str], list[str]]:
+    """The mtllib target plus every texture it references (MTL_TEXTURE_KEYS),
+    resolved relative to the .obj's own directory -- the usual
+    KiriEngine/Blender export convention of .mtl + textures sitting next to
+    the .obj."""
+    mtl_name = None
+    for line in obj_path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if line.strip().lower().startswith("mtllib "):
+            mtl_name = line.strip().split(None, 1)[1].strip()
+            break
+    if not mtl_name:
+        return [], []
+
+    mtl_path = obj_path.parent / mtl_name
+    if not mtl_path.exists():
+        return [], [mtl_name]
+
+    existing, missing = [mtl_name], []
+    for line in mtl_path.read_text(encoding="utf-8", errors="replace").splitlines():
+        parts = line.strip().split(None, 1)
+        if len(parts) == 2 and parts[0] in MTL_TEXTURE_KEYS:
+            tex_name = parts[1].split()[-1]  # options like -o/-s may precede it
+            (existing if (obj_path.parent / tex_name).exists() else missing).append(tex_name)
+    return existing, missing
+
+
+def resolve_sibling_files(model_path: Path) -> tuple[list[str], list[str]]:
+    """Sibling files model_path references via relative URI/path that must
+    travel with it for Blender (S3) to import it successfully. Returns
+    (existing relative paths, missing ones); .glb has none by convention
+    (self-contained)."""
+    suffix = model_path.suffix.lower()
+    if suffix == ".gltf":
+        return _gltf_sibling_uris(model_path)
+    if suffix == ".obj":
+        return _obj_sibling_uris(model_path)
+    return [], []
+
+
+def copy_model_with_siblings(model_in: Path, slug: str) -> tuple[Path, list[str], list[str]]:
+    """Copy model_in plus its resolved siblings into a clean data/raw/<slug>/,
+    preserving their relative sub-paths. Returns (dest model path, sibling
+    paths copied, sibling paths referenced but missing on disk -- the
+    latter is non-fatal here but will make S3 fail for real)."""
+    slug_dir = DATA_RAW / slug
+    if slug_dir.exists():
+        shutil.rmtree(slug_dir)  # no stale siblings from a previous fetch
+    slug_dir.mkdir(parents=True)
+
+    dest = slug_dir / f"{slug}{model_in.suffix.lower()}"
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(model_in, dest)
+
+    existing, missing = resolve_sibling_files(model_in)
+    for rel in existing:
+        target = slug_dir / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(model_in.parent / rel, target)
+
+    return dest, existing, missing
 
 
 # --------------------------------------------------------------------------
@@ -190,11 +290,10 @@ def run_sketchfab(args: argparse.Namespace) -> tuple[bool, str]:
     src_dir = unzip_archive(zip_path, work_dir / "gltf_src")
     model_in = find_model_file(src_dir)
 
-    dest = DATA_RAW / f"{slug}{model_in.suffix.lower()}"
-    dest.write_bytes(model_in.read_bytes())
+    dest, siblings, missing_siblings = copy_model_with_siblings(model_in, slug)
 
     info = source_info_from_sketchfab(meta, args.sketchfab, uid, args)
-    info["model_file"] = dest.name
+    info["model_file"] = str(dest.relative_to(DATA_RAW))
     write_json(info, DATA_RAW / "source_info.json")
 
     # Raw download intermediates are not the deliverable and would make the
@@ -210,9 +309,15 @@ def run_sketchfab(args: argparse.Namespace) -> tuple[bool, str]:
     work_dir.rmdir()
 
     todo_note = f", {len(info['todo_placeholders'])} TODO placeholder(s)" if info["todo_placeholders"] else ""
-    message = f"fetched {dest.relative_to(DATA_RAW.parent)} from Sketchfab ({slug}){todo_note}"
+    sibling_note = f", +{len(siblings)} sibling file(s)" if siblings else ""
+    message = f"fetched {dest.relative_to(DATA_RAW.parent)} from Sketchfab ({slug}){sibling_note}{todo_note}"
+    warn_reasons = []
     if info["todo_placeholders"]:
-        message = "Warning: " + message + " -- title/creator/licence missing from Sketchfab metadata, pass --title/--creator/--licence"
+        warn_reasons.append("title/creator/licence missing from Sketchfab metadata, pass --title/--creator/--licence")
+    if missing_siblings:
+        warn_reasons.append(f"referenced sibling file(s) missing, S3 will fail to import: {', '.join(missing_siblings)}")
+    if warn_reasons:
+        message = "Warning: " + message + " -- " + "; ".join(warn_reasons)
     return True, message
 
 
@@ -231,13 +336,12 @@ def run_local(args: argparse.Namespace) -> tuple[bool, str]:
 
     ensure_dirs()
     slug = model_in.stem
-    dest = DATA_RAW / f"{slug}{model_in.suffix.lower()}"
-    dest.write_bytes(model_in.read_bytes())
+    dest, siblings, missing_siblings = copy_model_with_siblings(model_in, slug)
 
     info = build_source_info(
         input_mode="local",
         slug=slug,
-        model_file=dest.name,
+        model_file=str(dest.relative_to(DATA_RAW)),
         title=args.title,
         description=None,
         creator=args.creator,
@@ -251,9 +355,15 @@ def run_local(args: argparse.Namespace) -> tuple[bool, str]:
     write_json(info, DATA_RAW / "source_info.json")
 
     todo_note = f", {len(info['todo_placeholders'])} TODO placeholder(s) in source_info.json" if info["todo_placeholders"] else ""
-    message = f"{warning}fetched {dest.relative_to(DATA_RAW.parent)} from local file ({slug}){todo_note}"
-    if info["todo_placeholders"] and not message.startswith("Warning"):
-        message = "Warning: " + message + " -- pass --title/--creator/--licence, or fix them by hand before S5"
+    sibling_note = f", +{len(siblings)} sibling file(s)" if siblings else ""
+    message = f"{warning}fetched {dest.relative_to(DATA_RAW.parent)} from local file ({slug}){sibling_note}{todo_note}"
+    warn_reasons = []
+    if info["todo_placeholders"]:
+        warn_reasons.append("pass --title/--creator/--licence, or fix them by hand before S5")
+    if missing_siblings:
+        warn_reasons.append(f"referenced sibling file(s) missing, S3 will fail to import: {', '.join(missing_siblings)}")
+    if warn_reasons and not message.startswith("Warning"):
+        message = "Warning: " + message + " -- " + "; ".join(warn_reasons)
     return True, message
 
 

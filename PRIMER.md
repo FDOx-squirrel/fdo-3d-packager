@@ -122,7 +122,12 @@ Eigenschaften, an denen sich ein Lauf messen lässt:
    Schema-Validierung, sondern der volle Rundlauf (Muster: registry S8).
 2. Zwei Läufe mit demselben `--local`/`--sketchfab`-Input erzeugen
    byte-identische `dist/`-Dateien; Netzwerkzugriff bleibt auf `fetch`
-   beschränkt.
+   beschränkt. Einschränkung für `preview.png` (S3): die Kamera-/
+   Licht-Platzierung ist eine reine Funktion der Mesh-Bounding-Box (kein
+   Zufall, kein `datetime`), aber ob das Rendering selbst über
+   Blender-Versionen/GPU-Treiber hinweg wirklich byte-identisch bleibt,
+   konnte mangels Blender im Sandkasten nicht geprüft werden — Annahme,
+   kein verifizierter Fakt (siehe S3).
 3. `python main.py --list` zeigt alle Schritte samt Abhängigkeiten, ohne
    Blender/rdflib/jsonschema zu importieren.
 4. Jede Modell-Datei im Paket bekommt beim Rundlauf durch `fdo-squirrel`
@@ -160,7 +165,8 @@ Eigenschaften, an denen sich ein Lauf messen lässt:
 | `distributions[]` vorbefüllen? | nein — `fdo-squirrel` klassifiziert selbst (`classification_rules.yaml`), wir liefern keine eigene Vorbefüllung. Lücken (siehe Viewer-Zeile) werden dort nachgebessert, nicht hier kompensiert | 2026-09-03 |
 | FDO-Build via `fdo-squirrel` | `dist/<slug>.zip` wird durch eine lokale `fdo-squirrel`-Instanz geschickt statt RDF-Erzeugung selbst nachzubauen (Muster: `fdo-squirrel-registry` S8) | 2026-09-03 |
 | Einbindungsmechanismus für `fdo-squirrel` | offen (pip aus GitHub? Git-Submodule? Pfad-Config?) — siehe Teil D | Vorschlag ausstehend |
-| `source_info.json`-Vertrag (S2→S3/S4/S5) | eine Datei, von `fetch` geschrieben: `slug`, `model_file` (Dateiname unter `data/raw/`), `title`/`description`/`creator`/`creator_profile`/`licence`/`licence_url`/`source_url`/`sketchfab_uid`/`source_note`, plus `todo_placeholders` (Liste fehlender Pflichtfelder). Bei `--local` ohne `--title`/`--creator`/`--licence` werden `"TODO: … not set"`-Platzhalter geschrieben und `fetch` gibt eine mit `Warning:` beginnende Meldung zurück — nicht fatal im Normallauf, aber `--strict` (= CI) schlägt fehl, bis die Felder gesetzt sind. `mdcff` (S5) soll den Bau verweigern, solange `todo_placeholders` nicht leer ist (Vorschlag, in S5 zu bestätigen) | 2026-09-04 |
+| `source_info.json`-Vertrag (S2→S3/S4/S5) | eine Datei, von `fetch` geschrieben: `slug`, `model_file` (Pfad **relativ zu `data/raw/`**, kann ein Unterverzeichnis enthalten — z. B. `donaghmore-church-ruin/donaghmore-church-ruin.gltf`, korrigiert 2026-09-04, siehe S2-Nachtrag), `title`/`description`/`creator`/`creator_profile`/`licence`/`licence_url`/`source_url`/`sketchfab_uid`/`source_note`, plus `todo_placeholders` (Liste fehlender Pflichtfelder). Bei `--local` ohne `--title`/`--creator`/`--licence` werden `"TODO: … not set"`-Platzhalter geschrieben und `fetch` gibt eine mit `Warning:` beginnende Meldung zurück — nicht fatal im Normallauf, aber `--strict` (= CI) schlägt fehl, bis die Felder gesetzt sind. Dieselbe `Warning:`-Mechanik greift jetzt auch, wenn vom Modell referenzierte Begleitdateien (`scene.bin`, `textures/…`, `.mtl`) fehlen. `mdcff` (S5) soll den Bau verweigern, solange `todo_placeholders` nicht leer ist (Vorschlag, in S5 zu bestätigen) | 2026-09-04, korrigiert 2026-09-04 |
+| Begleitdateien eines Modells (`scene.bin`, `textures/…` bei `.gltf`; `.mtl`+Texturen bei `.obj`) | werden von `fetch` erkannt (`resolve_sibling_files()`) und unter denselben relativen Pfaden neben das Modell nach `data/raw/<slug>/` kopiert, statt nur die eine Modell-Datei zu kopieren — sonst bricht Blender (S3) an der relativen URI-Auflösung ab. `.glb` hat keine externen Begleitdateien (self-contained) | 2026-09-04, Befund aus erstem echten `--sketchfab`-Lauf |
 | Verhältnis zum künftigen Software-FDO-Packager (Git-Link → `fdo:SoftwareFDO`) | eigenes Repo (`fdo-software-packager`?), nicht dasselbe wie hier — `fetch`+`convert` sind fachlich verschieden (Sketchfab/Blender/Nexus vs. Git-Clone+Repo-Analyse), und A3 verlangt ohnehin Kopieren statt Referenzieren, ein gemeinsames Repo spart also keine Duplizierung, nur Übersicht. Was kopiert werden sollte, sobald das Schwester-Repo startet: MD.cff/CITATION.cff-Writer, Bundle-Layout, `build_fdo`-Schritt (S5–S7) | 2026-09-03, Vorschlag |
 
 ### A5 Was in welchem Chat hochgeladen wird
@@ -190,7 +196,7 @@ Nicht anwendbar in S1 — dieses Repo veröffentlicht selbst keine RDF-IRIs
 | S0 | Festlegungen: Org, Name, Output-Format, PID-Konvention | fdo-3d-packager | – | erledigt 2026-09-03 |
 | S1 | Skeleton: Repo-Layout, `main.py`, Schritt-Stubs, `requirements.txt`, `LICENSE`, `CITATION.cff` | fdo-3d-packager | S0 | erledigt 2026-09-03 |
 | S2 | `fetch`-Schritt: `--sketchfab`/`--local` → `data/raw/` (aus dem Prototyp migriert) | fdo-3d-packager | S1 | erledigt 2026-09-04 |
-| S3 | `convert`-Schritt: Blender → `dist/model.obj` + `preview.png` | fdo-3d-packager | S2 | offen |
+| S3 | `convert`-Schritt: Blender → `dist/<slug>/model.obj` + `preview.png` | fdo-3d-packager | S2 | erledigt 2026-09-04 |
 | S4 | `nexus`-Schritt: `nxsbuild`/`nxscompress` → `dist/model.nxs`/`.nxz` | fdo-3d-packager | S3 | offen |
 | S5 | `mdcff`-Schritt: `MD.cff` + `CITATION.cff` schreiben, gegen Schema validieren | fdo-3d-packager | S2, S4 | offen |
 | S6 | `bundle`-Schritt: `dist/<slug>.zip` im `fdo-squirrel`-Layout | fdo-3d-packager | S3, S4, S5 | offen |
@@ -301,6 +307,108 @@ API konnte im Sandkasten nicht verifiziert werden (Domain nicht im
 Netzwerk-Allowlist); nur simulierte HTTP-Antworten getestet. Erste echte
 Probe mit einem von Anne-Karolines Sketchfab-Links steht noch aus — sinnvoll
 als erster Schritt der nächsten Chat-Session vor S3.
+
+### Nachtrag 2026-09-04 — erster echter `--sketchfab`-Lauf, echter Bug
+
+Erste echte Probe durchgeführt: "Donaghmore Church ruin"
+(`a602439f3513431ea1b306358a2581e5`). Dabei kam ein echter, blockierender
+Bug ans Licht: `run_sketchfab()` kopierte bisher nur die `.gltf`-Datei
+selbst nach `data/raw/<slug>.gltf` und ließ ihre Begleitdateien fallen —
+jeder reale Sketchfab-glTF-Export splittet aber Geometrie (`scene.bin`,
+referenziert über `buffers[].uri`) und Texturen (`textures/*.jpeg`, über
+`images[].uri`) in separate Dateien. Blender (S3) wäre bei jedem echten
+Modell mit „Datei nicht gefunden" abgebrochen, weil die relative
+URI-Auflösung des glTF ins Leere gelaufen wäre.
+
+Fix: `resolve_sibling_files()` liest bei `.gltf` die `buffers[]`/`images[]`-
+URIs (data:-URIs ausgenommen), bei `.obj` `mtllib` plus alle
+Textur-Referenzen im `.mtl` (`MTL_TEXTURE_KEYS`, jetzt in
+`fdo_3d_packager_utils.py`, geteilt mit S3). `.glb` hat keine externen
+Begleitdateien (self-contained). `data/raw/`-Layout geändert von
+`data/raw/<slug>.<ext>` auf `data/raw/<slug>/<slug>.<ext>` plus
+Begleitdateien unter denselben relativen Pfaden (z. B.
+`data/raw/<slug>/textures/foo.jpeg`) — das hält die relativen URIs im
+Modell gültig, ohne sie umschreiben zu müssen. `source_info.json.model_file`
+ist entsprechend jetzt ein Pfad *relativ zu `data/raw/`* (kann ein
+Unterverzeichnis enthalten), nicht mehr ein nackter Dateiname direkt unter
+`data/raw/` — **A4-Vertrag entsprechend angepasst.** Fehlen Begleitdateien
+tatsächlich (Netzwerk-Abbruch, unvollständiges Archiv), wird das jetzt als
+`Warning:`-Meldung sichtbar (gleicher Mechanismus wie fehlende
+Pflichtfelder), statt erst in S3 stumm zu scheitern. Betrifft auch den
+`--local`-Pfad (`.obj` mit `mtllib`/Texturen hatte denselben Fehler).
+
+Verifiziert im Sandkasten (kein echtes Sketchfab-Netzwerk verfügbar, daher
+simuliert): `--sketchfab`-Pfad gegen die reale Donaghmore-`sketchfab_meta.json`
+plus ein nachgebautes ZIP-Archiv mit `scene.gltf`+`scene.bin`+6
+`textures/*.jpeg` (Netzwerk-Aufrufe gemockt) — alle 7 Begleitdateien korrekt
+erkannt und an den richtigen relativen Pfaden kopiert, `source_info.json`
+identisch zum echten Lauf bis auf `model_file`. `--local`-Pfad mit
+`.obj`+`.mtl`+2 Texturen getestet, inklusive Fall mit einer fehlenden
+Textur (`Warning:`-Meldung wie erwartet). Zwei aufeinanderfolgende Läufe
+mit identischem Input: `data/raw/` byte-identisch (`sha256sum`-Vergleich
+über alle Dateien).
+
+## S3 — `convert`
+
+**Ziel:** `data/raw/<model_file>` (aus `source_info.json`) wird per
+Blender headless nach `dist/<slug>/model.obj` (+`textures/`) und
+`dist/<slug>/preview.png` konvertiert — offline, gegen das, was `fetch`
+bereits abgelegt hat.
+
+**Uploads für diesen Schritt:** `PRIMER.md` + Repo-Bundle (s. A5).
+
+**Substanz:**
+- `py/blender_convert_headless.py`: läuft *innerhalb* Blenders eigenem
+  Python (`bpy`), nicht mit dem Repo-Interpreter — aufgerufen als
+  `blender -b --python py/blender_convert_headless.py -- --in … --obj-out …
+  --preview-out …`. Aus `blender_convert.py` im `sketchfab_fdo_prototype`
+  migriert: `import_model()` unterscheidet `.gltf`/`.glb`
+  (`bpy.ops.import_scene.gltf`) und `.obj` (`bpy.ops.wm.obj_import`),
+  Export via `bpy.ops.wm.obj_export(path_mode="COPY", export_materials=True)`,
+  Preview-Render mit fixer 3-Punkt-Beleuchtung aus der Mesh-Bounding-Box
+  (kein Zufall, siehe A2 Punkt 2 zur Determinismus-Einschränkung).
+- `py/step_convert.py`: sucht Blender (`--blender-bin`/`BLENDER_BIN`/
+  `blender`), ruft es per `subprocess.run(check=True)` auf (A3: Guard
+  bleibt erhalten), räumt `dist/<slug>/` vor jedem Lauf leer (keine
+  Textur-Leichen aus einem vorherigen Lauf). Danach: `_organize_textures()`
+  verschiebt alles, was Blender neben `model.obj`/`model.mtl`/`preview.png`
+  kopiert hat, nach `textures/` und schreibt die `map_*`-Zeilen im `.mtl`
+  entsprechend um — **diff-basiert** (alles außer den drei bekannten
+  Dateinamen), nicht anhand angenommener Blender-Dateinamen, weil Blender
+  bei Namenskollisionen selbst umbenennt (`foo.jpeg` → `foo.001.jpeg`).
+  `textures/` als eigener Ordner ist Absicht (A4: `auxiliary`-Rolle in
+  `classification_rules.yaml`, nicht `documentation`).
+- `main.py`: globales `--blender-bin`-Flag ergänzt (gleiches Muster wie
+  `--token` für `fetch`).
+
+**Abnahme:** `python main.py --only convert` schlägt mit klarer Meldung
+fehl, wenn kein `blender`-Binary gefunden wird (`shutil.which` +
+Pfad-Check). Mit einem funktionierenden Blender: `dist/<slug>/model.obj`,
+`model.mtl`, `textures/*`, `preview.png` vorhanden; zwei aufeinanderfolgende
+Läufe erzeugen dieselbe Dateiliste (siehe A2 Punkt 2 zur Einschränkung bei
+`preview.png` selbst).
+
+### Erledigt 2026-09-04
+
+Python-seitige Orchestrierung (Blender-Aufruf, Fehlerbehandlung bei
+fehlendem Binary, `dist/`-Aufräumen, Texturen-Diff-und-Umzug,
+`.mtl`-Rewrite, Idempotenz) gegen einen Fake-`blender`-Stellvertreter
+verifiziert, der ein realistisches, kollidierendes Textur-Namensschema
+nachbildet (`material_0_baseColor.jpeg` + `material_0_baseColor.001.jpeg`)
+— zwei Läufe erzeugen dieselbe `dist/`-Dateiliste mit identischen Hashes.
+Ein echter Bug dabei gefunden und gefixt: die erste Fassung verschob
+`preview.png` fälschlich mit nach `textures/`, weil der Diff nur
+`model.obj`/`model.mtl` ausnahm.
+
+**Nicht verifiziert, da kein Blender im Sandkasten verfügbar:** ob
+`blender_convert_headless.py` gegen eine echte Blender-Installation
+tatsächlich importiert/exportiert/rendert wie erwartet (Operator-Namen wie
+`bpy.ops.wm.obj_export`/`bpy.ops.wm.obj_import` sind Blender-4.x-API, aus
+dem Prototyp übernommen, dort ebenfalls nie gegen echtes Blender getestet)
+— das ist der erste sinnvolle Schritt der nächsten Session: `python main.py
+--only convert` gegen den echten Donaghmore-Fund aus S2 laufen lassen und
+das Ergebnis (`dist/donaghmore-church-ruin/`) mit echten Augen/einem
+OBJ-Viewer prüfen, bevor S4 (Nexus) draufsetzt.
 
 ---
 

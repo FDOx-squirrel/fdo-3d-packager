@@ -46,7 +46,7 @@ STEPS: list[Step] = [
     Step("fetch", "step_fetch", network=True,
          description="Resolve --sketchfab/--local into data/raw/."),
     Step("convert", "step_convert", depends_on=("fetch",),
-         description="Blender: data/raw model -> dist/model.obj + preview.png."),
+         description="Blender: data/raw model -> dist/<slug>/model.obj + preview.png."),
     Step("nexus", "step_nexus", depends_on=("convert",),
          description="nxsbuild/nxscompress: dist/model.obj -> model.nxs/.nxz."),
     Step("mdcff", "step_mdcff", depends_on=("fetch", "nexus"),
@@ -84,6 +84,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     ap.add_argument("--licence", help="Metadata override/source for --local (fetch step).")
     ap.add_argument("--licence-url", help="Metadata override/source for --local (fetch step).")
     ap.add_argument("--source-note", help="Free-text provenance note, e.g. 'KiriEngine, 180 photos, 2026-03' (fetch step).")
+
+    # Blender binary for the convert step (S3). Accepted here already for
+    # the same reason as --sketchfab/--local above.
+    ap.add_argument("--blender-bin", default=os.environ.get("BLENDER_BIN", "blender"),
+                     help="Blender executable, headless-capable (convert step; default: env BLENDER_BIN or 'blender').")
     return ap
 
 

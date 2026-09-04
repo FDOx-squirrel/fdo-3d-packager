@@ -36,6 +36,34 @@ def write_json(data: Any, path: Path) -> None:
     path.write_text(text + "\n", encoding="utf-8")
 
 
+def read_json(path: Path) -> Any:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def load_source_info() -> dict:
+    """Read data/raw/source_info.json, the S2 -> S3/S4/S5 handoff contract
+    (see step_fetch.py:build_source_info -- slug/model_file/title/creator/
+    licence/... plus todo_placeholders). Shared here rather than re-derived
+    per step, per this module's own purpose (see docstring)."""
+    path = DATA_RAW / "source_info.json"
+    if not path.exists():
+        raise FileNotFoundError(
+            f"{path} not found -- run `python main.py --only fetch ...` first"
+        )
+    return read_json(path)
+
+
+# Wavefront MTL texture-map directives whose last whitespace-separated token
+# is a texture filename (options like -o/-s/-bm may precede it). Shared by
+# step_fetch.py (S2, resolving --local .obj siblings) and step_convert.py
+# (S3, moving Blender-exported textures into textures/ and rewriting these
+# lines to point there).
+MTL_TEXTURE_KEYS = (
+    "map_Kd", "map_Ka", "map_Ks", "map_Ns", "map_d",
+    "map_bump", "bump", "disp", "decal", "refl",
+)
+
+
 def content_fingerprint(path: Path) -> str:
     """SHA-256 hex digest of a file's bytes.
 
