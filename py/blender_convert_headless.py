@@ -151,20 +151,29 @@ def setup_camera_and_lights(center: mathutils.Vector, radius: float) -> None:
     constraint.up_axis = "UP_Y"
     bpy.context.scene.camera = cam
 
-    # Fixed three-point setup, purely a function of the mesh's own bounding
-    # box -- no randomness, so this stays a deterministic function of the
-    # model, not the run (see module docstring for the caveat on rendering).
+    # Befund 2026-09-04 (3): the original three-point setup used AREA
+    # lights with light_data.size = radius and a fixed Watt energy. AREA
+    # light irradiance falls off with the *emitter's own size squared* as
+    # well as distance, so tying size to the model's bounding radius made
+    # the light dimmer the bigger the model -- fine for a small object
+    # (the prototype's original test case), catastrophically underpowered
+    # for a full building (Donaghmore, radius likely tens of metres):
+    # textures turned out to be correctly linked all along (see
+    # relink_images() diagnostics), the scene itself was just almost
+    # unlit. SUN lights fix this at the source: their energy is irradiance
+    # (W/m^2), independent of distance or the light object's location/size
+    # entirely -- only direction (via the same TRACK_TO constraint) matters,
+    # so the same three fixed values now light a stone and a church alike.
     lights = [
-        ("key", center + mathutils.Vector((radius * 2, -radius * 2, radius * 2)), 1200),
-        ("fill", center + mathutils.Vector((-radius * 2, -radius * 1, radius * 1.5)), 500),
-        ("rim", center + mathutils.Vector((0, radius * 2.5, radius * 1)), 700),
+        ("key", center + mathutils.Vector((radius * 1.8, -radius * 1.8, radius * 1.2)), 3.0),
+        ("fill", center + mathutils.Vector((-radius * 1.8, -radius * 0.8, radius * 1.0)), 1.2),
+        ("rim", center + mathutils.Vector((0, radius * 2.0, radius * 0.8)), 1.5),
     ]
     for name, loc, energy in lights:
-        light_data = bpy.data.lights.new(name, type="AREA")
+        light_data = bpy.data.lights.new(name, type="SUN")
         light_data.energy = energy
-        light_data.size = radius
         light_obj = bpy.data.objects.new(name, light_data)
-        light_obj.location = loc
+        light_obj.location = loc  # irrelevant to a SUN's illumination, kept for TRACK_TO below
         constraint = light_obj.constraints.new(type="TRACK_TO")
         constraint.target = target
         constraint.track_axis = "TRACK_NEGATIVE_Z"

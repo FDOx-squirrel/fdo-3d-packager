@@ -487,6 +487,46 @@ weiterhin dunkel bleibt, ist das ein separater, noch ungelöster Punkt — die
 Diagnose-Prints in `relink_images()` sollten dafür beim nächsten Lauf
 zeigen, ob/wie viele Bilder überhaupt in `bpy.data.images` auftauchen.
 
+### Nachtrag 2026-09-04 (3) — Texturen korrekt geladen, `preview.png` trotzdem gleich: Beleuchtung, nicht Texturen
+
+`relink_images()`-Diagnose ausgewertet: alle 6 Bilder werden korrekt in
+`bpy.data.images` gefunden, `image.filepath` zeigte schon *vor* dem Relink
+auf den vollständigen, korrekten absoluten Pfad
+(`C:\git\fdo-3d-packager\data\raw\donaghmore-church-ruin\textures\material_N_baseColor.jpeg`),
+`source='FILE'`, alle als `MATCH` erkannt, `reload()` ohne Fehler. Die
+ursprüngliche „`//`-Pfad relativ zur nie gespeicherten `.blend`-Datei"-Theorie
+aus Nachtrag (1) war damit **widerlegt** — Blenders glTF-Importer hatte die
+Bildpfade die ganze Zeit korrekt aufgelöst. Auch `_copy_textures_from_raw()`
+(Nachtrag 2) hat korrekt alle 6 Texturen ins Paket kopiert
+(`[convert] ... 6 texture(s) -> textures/`). Trotzdem: `preview.png`
+byte-für-byte identisch zu den beiden vorherigen (fehlerhaften) Läufen.
+
+Damit ist die Textur-Ladung als Ursache ausgeschlossen — das Problem liegt
+in der Beleuchtung selbst. Der ursprüngliche Drei-Punkt-Aufbau (aus dem nie
+gegen echtes Blender getesteten Prototyp übernommen) nutzte `AREA`-Lichter
+mit `light_data.size = radius` bei fester Watt-Energie. Ein `AREA`-Licht
+strahlt bei fester Energie über eine mit der Emitterfläche quadratisch
+wachsende Fläche ab — je größer `radius` (bei der Donaghmore-Kirche
+vermutlich mehrere zehn Meter, bei den bisherigen Testfällen im Prototyp ein
+einzelner ~1m-Ogham-Stein), desto lichtschwächer wird die Beleuchtung bei
+gleicher Energie. Für ein Gebäude dieser Größenordnung reichten die festen
+Energiewerte (1200/500/700 W) praktisch nicht aus — die Szene war schlicht
+nahezu unbeleuchtet, unabhängig von den Texturen.
+
+**Fix:** Drei-Punkt-Aufbau auf `SUN`-Lichter umgestellt statt `AREA`.
+`SUN`-Energie ist Bestrahlungsstärke (W/m²), unabhängig von Distanz oder
+der (ohnehin nur für `TRACK_TO` relevanten) Objekt-Position/-Größe — dieselben
+festen Werte (3.0/1.2/1.5) beleuchten damit einen Stein genauso wie eine
+Kirche. Das war die naheliegende, aber bislang übersehene Fehlerquelle:
+skalierungsabhängige Beleuchtung, kein Textur-Problem.
+
+**Nicht verifiziert, da kein Blender im Sandkasten:** ob die gewählten
+`SUN`-Energiewerte (3.0/1.2/1.5) tatsächlich ein sinnvoll helles,
+nicht-überbelichtetes Bild ergeben — plausible Heuristik, keine kalibrierten
+Werte. Nächster Schritt: `python main.py --only convert` erneut, `preview.png`
+ansehen. Falls zu dunkel/hell, sind die drei Energiewerte am Anfang von
+`setup_camera_and_lights()` die Stellschraube.
+
 ---
 
 ## Teil D — Offene Punkte
