@@ -12,6 +12,13 @@ nxscompress then reads model.nxs and writes the compressed model.nxz next
 to it. Both are separate binaries from cnr-isti-vclab/nexus, not
 pip-installable -- see README.md External requirements.
 
+Two of nxsbuild's own options are exposed as flags rather than hardcoded,
+since a real run against a large model (Donaghmore church: 1.49M
+vertices, 2.67M faces, 6 textures) can take a long time at defaults:
+--nxsbuild-original-textures (-O, "use original textures, no repacking" --
+skips the texture-atlas repacking step) and --nxsbuild-ram (-r, RAM budget
+in MB, nxsbuild's own default is 2000).
+
 Requires local nxsbuild/nxscompress binaries. Not verified against real
 binaries in this chat's sandbox (neither is available there, and building
 Nexus from source needs Qt/vcglib -- out of scope here, reference platform
@@ -81,10 +88,17 @@ def run(args: argparse.Namespace) -> tuple[bool, str]:
     for stale in (nxs_path, nxz_path):
         stale.unlink(missing_ok=True)
 
+    nxsbuild_cmd = [nxsbuild_bin, str(obj_path), "-o", str(nxs_path)]
+    if getattr(args, "nxsbuild_original_textures", False):
+        nxsbuild_cmd.append("-O")
+    ram_mb = getattr(args, "nxsbuild_ram", None)
+    if ram_mb:
+        nxsbuild_cmd += ["-r", str(ram_mb)]
+
     # check=True: a failed nxsbuild/nxscompress run must stop the pipeline,
     # not be silently swallowed (PRIMER.md A3: copied subprocess calls keep
     # their check=True guards). main.py's own exception handling reports it.
-    subprocess.run([nxsbuild_bin, str(obj_path), "-o", str(nxs_path)], check=True)
+    subprocess.run(nxsbuild_cmd, check=True)
     if not nxs_path.exists():
         return False, f"nxsbuild ran but did not produce {nxs_path}"
 
@@ -100,6 +114,10 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--nxsbuild-bin", default=os.environ.get("NXSBUILD_BIN", "nxsbuild"))
     ap.add_argument("--nxscompress-bin", default=os.environ.get("NXSCOMPRESS_BIN", "nxscompress"))
+    ap.add_argument("--nxsbuild-original-textures", action="store_true",
+                     help="Pass -O to nxsbuild: use original textures, skip atlas repacking (faster).")
+    ap.add_argument("--nxsbuild-ram", type=int, default=None, metavar="MB",
+                     help="Pass -r <MB> to nxsbuild (its own default: 2000).")
     ok, message = run(ap.parse_args())
     print(f"[nexus] {message}")
     raise SystemExit(0 if ok else 1)

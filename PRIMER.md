@@ -574,6 +574,12 @@ abgelegt hat.
 - `main.py`: globale Flags `--nxsbuild-bin`/`--nxscompress-bin` ergänzt
 (gleiches Muster wie `--blender-bin` für S3, inkl. `NXSBUILD_BIN`/
 `NXSCOMPRESS_BIN`-Env-Fallback).
+- `--nxsbuild-original-textures` (`-O`, kein Textur-Repacking) und
+`--nxsbuild-ram <MB>` (`-r`) als zusätzliche Passthrough-Flags ergänzt,
+nachdem der erste echte Lauf gegen die volle Donaghmore-Kirche
+(1,49 Mio. Vertices, 2,67 Mio. Faces, 6 Texturen) lange gebraucht hat
+— beide Flags werden 1:1 an `nxsbuild` durchgereicht, sonst keine
+eigene Logik.
 - Recherchiert (nicht angenommen) aus `cnr-isti-vclab/nexus`s eigener
 Doku (`doc/nxsbuild.md`, `doc/nxsedit.md`, README): `nxsbuild [PLY/OBJ
 INPUT] -o <output.nxs>` — `.obj` wird laut Tool-Hilfetext
@@ -628,6 +634,38 @@ Schritt: `python main.py --only nexus` gegen den echten
 `dist/donaghmore-church-ruin/model.obj` aus S3 laufen lassen, `model.nxs`/
 `model.nxz` mit `nxsview` ansehen, danach zweimal hintereinander laufen
 lassen und `sha256sum` vergleichen.
+
+### Nachtrag 2026-09-04 — erster echter Lauf, `-O`/`-r` ergänzt
+
+[#nachtrag-2026-09-04--erster-echter-lauf--o-r-ergänzt](#nachtrag-2026-09-04--erster-echter-lauf--o-r-ergänzt)
+
+Erster echter `nxsbuild`/`nxscompress`-Lauf gegen die volle Donaghmore-
+Kirche durchgeführt (`C:\Nexus_43\nxsbuild.exe`/`nxscompress.exe`,
+`--nxsbuild-bin`/`--nxscompress-bin` wie vorgesehen benutzt). Binary
+korrekt gefunden, Import/Verarbeitung liefen sichtbar (Vertices/Faces/
+Texturen-Log passend zu S3s Zahlen), Ergebnis von Flo committed — S4 ist
+damit gegen einen echten Fall bestätigt durchgelaufen, nicht nur gegen die
+Fake-Stellvertreter im Sandkasten. Konkrete Laufzeit nicht protokolliert.
+
+Bei den Standardparametern hat der Lauf bei 1,49 Mio. Vertices/2,67 Mio.
+Faces/6 Texturen (S3-Nachtrag 2026-09-04) spürbar lange gedauert (kein
+Hänger, sondern echte Rechenzeit — vermutlich vor allem das
+Textur-Atlas-Repacking bei „Creating level 0"). Daraufhin `--nxsbuild-
+original-textures` (`-O`) und `--nxsbuild-ram <MB>` (`-r`) als
+Passthrough-Flags ergänzt (siehe A4/Substanz oben) — noch nicht gegen
+einen echten Lauf mit diesen Flags verifiziert, nur die Weiterleitung an
+den Subprocess im Sandkasten (Fake-Stellvertreter, unterschiedliche
+Flag-Kombinationen erzeugen unterschiedliche Fake-Ausgaben — bestätigt
+also nur, dass die Flags ankommen, nicht was `nxsbuild` damit tatsächlich
+macht).
+
+Nächster Testkandidat (Beschluss im Chat, nicht A4-würdig — reine
+Testdaten-Wahl, keine Architekturentscheidung): „Govan 2" (Hogback-Stein,
+[The Govan Stones](https://sketchfab.com/3d-models/govan-2-b9dc56bfc1d342f6b4da3281e6629c07),
+236,4k Dreiecke/119,8k Vertices laut Sketchfab-Seite, CC-BY 4.0) statt
+eines weiteren Gebäudes — rund Faktor 11 kleiner als Donaghmore, um die
+Pipeline schneller iterieren zu können und `-O`/`-r` an einem echten,
+aber kleinen Fall zu prüfen.
 
 ---
 

@@ -91,11 +91,15 @@ Once `convert` has run, `nexus` picks up `dist/<slug>/model.obj` automatically:
 ```cmd
 python main.py --only nexus
 python main.py --only nexus --nxsbuild-bin "C:\nexus\nxsbuild.exe" --nxscompress-bin "C:\nexus\nxscompress.exe"
+python main.py --only nexus --nxsbuild-original-textures --nxsbuild-ram 8000
 ```
 
 `--nxsbuild-bin`/`--nxscompress-bin` default to `nxsbuild`/`nxscompress` on
 PATH, overridable via the `NXSBUILD_BIN`/`NXSCOMPRESS_BIN` environment
-variables too.
+variables too. `--nxsbuild-original-textures` (`-O`, skip texture-atlas
+repacking) and `--nxsbuild-ram <MB>` (`-r`, RAM budget, nxsbuild's own
+default is 2000) are passed straight through to `nxsbuild` -- useful on
+large models, where the default run can take a long time.
 
 ## External requirements (not pip-installable)
 
