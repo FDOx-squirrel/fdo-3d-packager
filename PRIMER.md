@@ -197,7 +197,7 @@ Nicht anwendbar in S1 — dieses Repo veröffentlicht selbst keine RDF-IRIs
 | S1 | Skeleton: Repo-Layout, `main.py`, Schritt-Stubs, `requirements.txt`, `LICENSE`, `CITATION.cff` | fdo-3d-packager | S0 | erledigt 2026-09-03 |
 | S2 | `fetch`-Schritt: `--sketchfab`/`--local` → `data/raw/` (aus dem Prototyp migriert) | fdo-3d-packager | S1 | erledigt 2026-09-04 |
 | S3 | `convert`-Schritt: Blender → `dist/<slug>/model.obj` + `preview.png` | fdo-3d-packager | S2 | erledigt 2026-09-04 |
-| S4 | `nexus`-Schritt: `nxsbuild`/`nxscompress` → `dist/model.nxs`/`.nxz` | fdo-3d-packager | S3 | offen |
+| S4 | `nexus`-Schritt: `nxsbuild`/`nxscompress` → `dist/model.nxs`/`.nxz` | fdo-3d-packager | S3 | erledigt 2026-09-04 |
 | S5 | `mdcff`-Schritt: `MD.cff` + `CITATION.cff` schreiben, gegen Schema validieren | fdo-3d-packager | S2, S4 | offen |
 | S6 | `bundle`-Schritt: `dist/<slug>.zip` im `fdo-squirrel`-Layout | fdo-3d-packager | S3, S4, S5 | offen |
 | S7 | `dist/<slug>.zip` durch `fdo-squirrel` schicken, `fdo-metadata.ttl` als Beleg (Muster: registry S8) | fdo-3d-packager | S6 | offen |
@@ -543,6 +543,91 @@ Weiterhin offen (kein Blocker, nur nicht geprüft): ob zwei aufeinanderfolgende
 — insbesondere `preview.png`s Rendering-Determinismus über Blender-Version/
 GPU-Treiber hinweg. Nicht dringend, da `preview.png` reines Anschauungsbild
 ist und nicht in die FDO-Metadaten (Checksums etc.) einfließt.
+
+## S4 — `nexus`
+
+[#s4--nexus](#s4--nexus)
+
+**Ziel:** `dist/<slug>/model.obj` (aus S3) wird per `nxsbuild`/`nxscompress`
+nach `dist/<slug>/model.nxs` (multiresolution) und `dist/<slug>/model.nxz`
+(komprimiert) konvertiert — offline, gegen das, was `convert` bereits
+abgelegt hat.
+
+**Uploads für diesen Schritt:** `PRIMER.md` + Repo-Bundle (s. A5).
+
+**Substanz:**
+
+- `py/step_nexus.py`: liest `slug` aus `data/raw/source_info.json` (S2,
+derselbe Vertrag wie S3), findet `dist/<slug>/model.obj` (von S3
+geschrieben, inkl. `model.mtl` mit bereits korrekten
+`textures/<file>`-Zeilen, siehe S3-Nachtrag 2). Ruft `nxsbuild
+<model.obj> -o model.nxs` und danach `nxscompress model.nxs -o
+model.nxz` per `subprocess.run(check=True)` auf (A3: Guard bleibt
+erhalten). `nxsbuild` liest `model.mtl`/`textures/` automatisch über
+den `mtllib`-Mechanismus des OBJ-Formats — kein eigener Texturen-Umzug
+nötig wie in S3, da S3 bereits alles relativ zu `model.obj` korrekt
+abgelegt hat.
+- Bindet nur die zwei Dateien, die dieser Schritt selbst besitzt
+(`model.nxs`/`model.nxz`), vor jedem Lauf frisch — nicht den ganzen
+`dist/<slug>/`-Ordner wie S3, sonst gingen `model.obj`/`textures/`/
+`preview.png` aus S3 verloren.
+- `main.py`: globale Flags `--nxsbuild-bin`/`--nxscompress-bin` ergänzt
+(gleiches Muster wie `--blender-bin` für S3, inkl. `NXSBUILD_BIN`/
+`NXSCOMPRESS_BIN`-Env-Fallback).
+- Recherchiert (nicht angenommen) aus `cnr-isti-vclab/nexus`s eigener
+Doku (`doc/nxsbuild.md`, `doc/nxsedit.md`, README): `nxsbuild [PLY/OBJ
+INPUT] -o <output.nxs>` — `.obj` wird laut Tool-Hilfetext
+(`vcg.isti.cnr.it/vcgtools/nexus`) direkt akzeptiert, nicht nur `.ply`.
+`nxscompress` ist ein eigenes Executable (README: `gargo.nxs -->
+nxscompress.exe --> gargo.nxz`), keine Notlösung über `nxsedit -z` —
+das wäre eine Alternative, aber die Familie hat sich (A1-Befund,
+Sketchfab-Vorarbeit) bereits auf `nxsbuild`/`nxscompress` festgelegt.
+
+**Abnahme:** `python main.py --only nexus` schlägt mit klarer Meldung
+fehl, wenn `nxsbuild`/`nxscompress` nicht gefunden werden
+(`shutil.which` + Pfad-Check, wie bei `--blender-bin`) oder wenn
+`dist/<slug>/model.obj` fehlt (S3 noch nicht gelaufen). Mit
+funktionierenden Binaries: `dist/<slug>/model.nxs` und `model.nxz`
+vorhanden; ein fehlschlagender `nxsbuild`/`nxscompress`-Lauf
+(`check=True`) stoppt die Pipeline statt sie stillschweigend fortzusetzen.
+
+### Erledigt 2026-09-04
+
+[#erledigt-2026-09-04-2](#erledigt-2026-09-04-2)
+
+Wie bei S3 (kein Blender im Sandkasten) ist auch hier kein echtes
+`nxsbuild`/`nxscompress` im Sandkasten verfügbar — Nexus ist nicht
+pip-installierbar und ein Bau aus Quellcode braucht Qt/vcglib
+(Referenzplattform ist ohnehin Windows, A3). Verifiziert wurde daher die
+Python-seitige Orchestrierung gegen zwei Fake-Stellvertreter
+(`fake_nxsbuild.py`/`fake_nxscompress.py`, nicht Teil des Patches — reines
+Sandkasten-Werkzeug), die deterministische Ausgaben aus den echten
+Eingabedateien (inkl. `model.mtl`/`textures/`) ableiten: `--only nexus`
+über `main.py` und standalone über `py/step_nexus.py`, beide mit
+CLI-Flags und mit `NXSBUILD_BIN`/`NXSCOMPRESS_BIN`-Env-Fallback getestet.
+Zwei aufeinanderfolgende Läufe erzeugen byte-identische `model.nxs`/
+`model.nxz` (`sha256sum`-Vergleich), `model.obj`/`model.mtl`/`textures/`/
+`preview.png` aus S3 bleiben dabei unverändert (nur die zwei S4-eigenen
+Dateien werden vor jedem Lauf neu geschrieben). Fehlerpfade geprüft:
+fehlendes `nxsbuild`-Binary, fehlendes `nxscompress`-Binary, fehlendes
+`model.obj` (S3 nicht gelaufen), sowie ein `nxsbuild`, das mit Exit 1
+abbricht (`check=True` propagiert den Fehler korrekt, `main.py` stoppt
+die Pipeline statt fortzufahren).
+
+**Nicht verifiziert, da kein echtes `nxsbuild`/`nxscompress` im
+Sandkasten:** ob die beiden Binaries `model.obj` inkl. `textures/`
+tatsächlich korrekt einlesen (insbesondere `-O`/Textur-Repacking-Verhalten,
+standardmäßig *ohne* `-O` — Texturen werden ins `.nxs` eingebettet, nicht
+nur referenziert), ob die Default-Parameter (`-f`/Faces pro Patch etc.) für
+ein Gebäude wie die Donaghmore-Kirche sinnvoll sind, und ob zwei echte
+Läufe wirklich byte-identische `model.nxs`/`model.nxz` liefern (A2 Punkt 2
+— unklar, ob z. B. `nxsbuild`s Patch-Zerlegung von Ausführung zu
+Ausführung deterministisch ist, anders als bei `preview.png` gibt es dafür
+noch keinen konkreten Hinweis in der Upstream-Doku). Nächster sinnvoller
+Schritt: `python main.py --only nexus` gegen den echten
+`dist/donaghmore-church-ruin/model.obj` aus S3 laufen lassen, `model.nxs`/
+`model.nxz` mit `nxsview` ansehen, danach zweimal hintereinander laufen
+lassen und `sha256sum` vergleichen.
 
 ---
 

@@ -4,12 +4,13 @@ Packages a 3D model -- fetched from Sketchfab or supplied as a local file --
 into a FAIR Digital Object (`fdo:3DDataFDO`) ready for ingest by
 [`fdo-squirrel`](https://github.com/FDOx-squirrel/fdo-squirrel).
 
-**Status: S3 done.** `fetch` (`--sketchfab`/`--local` -> `data/raw/<slug>/`
-+ `source_info.json`, including sibling files like `scene.bin`/`textures/`)
-and `convert` (Blender headless -> `dist/<slug>/model.obj` + `textures/` +
-`preview.png`) are implemented. `nexus`/`mdcff`/`bundle`/`build_fdo` are
-still S1 stubs. See [`PRIMER.md`](PRIMER.md) for the full plan, the
-decisions behind it, and what each step will actually do.
+**Status: S4 done.** `fetch` (`--sketchfab`/`--local` -> `data/raw/<slug>/`
++ `source_info.json`, including sibling files like `scene.bin`/`textures/`),
+`convert` (Blender headless -> `dist/<slug>/model.obj` + `textures/` +
+`preview.png`) and `nexus` (`nxsbuild`/`nxscompress` -> `dist/<slug>/model.nxs`
++ `model.nxz`) are implemented. `mdcff`/`bundle`/`build_fdo` are still S1
+stubs. See [`PRIMER.md`](PRIMER.md) for the full plan, the decisions behind
+it, and what each step will actually do.
 
 ## Repository structure
 
@@ -36,8 +37,8 @@ fdo-3d-packager/
 │                            references (scene.bin, textures/...), source_info.json
 │                            (S2/S3/S4/S5 handoff, see step_fetch.py) at data/raw/
 │                            top level, sketchfab_meta.json (audit, --sketchfab only)
-└── dist/                    products: dist/<slug>/model.obj+textures/+preview.png,
-                             later model.nxs/.nxz, MD.cff, the bundle ZIP
+└── dist/                    products: dist/<slug>/model.obj+textures/+preview.png+
+                             model.nxs+model.nxz, later MD.cff, the bundle ZIP
 ```
 
 ## How to run
@@ -84,6 +85,17 @@ python main.py --only convert --blender-bin "C:\Program Files\Blender Foundation
 
 `--blender-bin` defaults to `blender` on PATH, overridable via the
 `BLENDER_BIN` environment variable too.
+
+Once `convert` has run, `nexus` picks up `dist/<slug>/model.obj` automatically:
+
+```cmd
+python main.py --only nexus
+python main.py --only nexus --nxsbuild-bin "C:\nexus\nxsbuild.exe" --nxscompress-bin "C:\nexus\nxscompress.exe"
+```
+
+`--nxsbuild-bin`/`--nxscompress-bin` default to `nxsbuild`/`nxscompress` on
+PATH, overridable via the `NXSBUILD_BIN`/`NXSCOMPRESS_BIN` environment
+variables too.
 
 ## External requirements (not pip-installable)
 

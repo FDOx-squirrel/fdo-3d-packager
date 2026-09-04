@@ -89,6 +89,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
     # the same reason as --sketchfab/--local above.
     ap.add_argument("--blender-bin", default=os.environ.get("BLENDER_BIN", "blender"),
                      help="Blender executable, headless-capable (convert step; default: env BLENDER_BIN or 'blender').")
+
+    # nxsbuild/nxscompress binaries for the nexus step (S4). Same pattern
+    # as --blender-bin above.
+    ap.add_argument("--nxsbuild-bin", default=os.environ.get("NXSBUILD_BIN", "nxsbuild"),
+                     help="nxsbuild executable (nexus step; default: env NXSBUILD_BIN or 'nxsbuild').")
+    ap.add_argument("--nxscompress-bin", default=os.environ.get("NXSCOMPRESS_BIN", "nxscompress"),
+                     help="nxscompress executable (nexus step; default: env NXSCOMPRESS_BIN or 'nxscompress').")
     return ap
 
 
