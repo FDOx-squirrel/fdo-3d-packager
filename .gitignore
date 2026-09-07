@@ -39,3 +39,4 @@ dist/*_release/
 data/*
 PATCH-README.md
 cache*
+dist/ci-smoke*
