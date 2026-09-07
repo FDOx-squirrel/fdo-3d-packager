@@ -1127,7 +1127,92 @@ gleich verhält, wenn `convert`/`nexus` bei einem von mehreren echten
 Modellen real fehlschlagen (z. B. bei einem korrupten glTF) — dafür fehlt
 im Sandkasten weiterhin Blender.
 
+### Nachtrag 2026-09-07 (7) — erster echter Produktions-Rundlauf, 5/5 Modelle, alles bestätigt
+
+[#nachtrag-2026-09-07-7--erster-echter-produktions-rundlauf-55-modelle-alles-bestätigt](#nachtrag-2026-09-07-7--erster-echter-produktions-rundlauf-55-modelle-alles-bestätigt)
+
+Flo hat den in Nachtrag (6) neu gebauten kombinierten Modus real gegen
+Windows/Blender 5.2.1 LTS/Nexus mit den 5 Holy-Wells-URLs aus Nachtrag (5)
+laufen lassen — diesmal mit korrekt gesetztem `--nxsbuild-bin`/
+`--nxscompress-bin` (siehe Nachtrag (5): der frühere Fehlschlag war ein
+fehlendes Flag, kein Bug):
+
+```cmd
+python main.py --from fetch --sketchfab "..." --sketchfab "..." --sketchfab "..." --sketchfab "..." --sketchfab "..." --nxsbuild-bin "C:\Nexus_43\nxsbuild.exe" --nxscompress-bin "C:\Nexus_43\nxscompress.exe" --publisher-label "Research Squirrel Engineers Network" --publisher-id "https://github.com/Research-Squirrel-Engineers"
+```
+
+**Ergebnis: 5/5 Modelle komplett durch `fetch`→`convert`→`nexus`→`mdcff`
+(→`bundle`/`build_fdo` als No-Op-Stubs), kein einziger Fehler.** Das ist
+der erste echte End-to-End-Beleg für die *gesamte* aktuell implementierte
+Pipeline in einem Lauf — bisher war jeder Schritt nur einzeln oder gegen
+Fixtures bestätigt (Sandkasten hat kein Blender/Nexus). Insbesondere: das
+ist der erste echte Lauf von `mdcff` gegen **echten** `nexus`-Output
+(vorher immer leere Platzhalterdateien als Existenz-Marker) und der erste
+echte Beleg, dass der kombinierte `fetch`+Rundlauf-Modus (Nachtrag (6))
+und die Mehrfach-Slug-Schleife über die volle CLI tatsächlich funktionieren,
+nicht nur direkt gegen `_run_fetch_then_rest()` getestet.
+
+**Kennzahlen der 5 Modelle** (aus Terminal-Log + `dir /s`-Inventar,
+zum Nachschlagen für künftige Kapazitätsplanung):
+
+| Slug | Vertices | Faces | Texturen (`.nxz`) | `convert` | `nexus` | `.nxz`-Größe |
+|---|--:|--:|--:|--:|--:|--:|
+| `govan-2` | 120.797 | 236.352 | 24 | 39,1s | 13,7s | 9,9 MB |
+| `callan-st-augustines-well-re-upload` | 830.170 | 1.450.181 | 150 | 72,8s | 97,1s | 67,4 MB |
+| `freshford-st-lachtains-well-low-poly` | 7.719 | 11.347 | 3 | 55,2s | 5,3s | 6,4 MB |
+| `ballymakeera-st-abbans-grave` | 381.970 | 644.990 | 66 | 60,3s | 251,4s | 104,5 MB |
+| `cork-ogham-stone-ciic-83-ucc-14` | 894.209 | 1.499.990 | 144 | 57,2s | 66,1s | 14,9 MB |
+
+Gesamt: `fetch` 16,5s + `convert`/`nexus` zusammen ≈ 718s ≈ 12 Minuten für
+alle 5. Auffällig: `ballymakeera-st-abbans-grave` hat weniger
+Vertices/Faces als `callan-...`/`cork-...`, aber mit Abstand die längste
+`nexus`-Zeit (251s) — Ursache nicht geklärt (evtl. Patch-Zerlegung
+abhängig von Mesh-Topologie, nicht nur Face-Count; kein bestätigter
+Befund, nur eine Beobachtung).
+
+**Weitere Bestätigungen aus diesem Lauf:**
+
+- **`-O`-Vermeidung war richtig** (A4, 2026-09-04/2026-09-07 (2)): alle
+  5 `.nxz` haben `Textures: N > 0` (24/150/3/66/144) — kein einziges
+  `Textures: 0` wie beim `-O`-Fehlschlag damals.
+  Keines der Flags wurde diesmal gesetzt, wie vorgesehen.
+- **`relink_images()` verhält sich wie in S3 dokumentiert**: bei jedem
+  Modell werden 2 von 4 (oder 1 von 3) Image-Datablocks nicht gematcht —
+  das sind durchgehend die internen Blender-Compositor-Knoten
+  ("Render Result"/"Viewer Node"), kein neuer Bug.
+- **`bundle`/`build_fdo` (S6/S7) stören die Kette nicht**, obwohl sie
+  noch No-Op-Stubs sind — `nothing to do (...)` wird korrekt als Erfolg
+  gewertet, die Schleife läuft für jeden der 5 Slugs sauber bis zum Ende
+  durch.
+- **Preview-Renderings** (`preview.png`, alle fünf im Chat geteilt)
+  sehen alle plausibel aus: erkennbare Objekte (Holy-Well-Schrein mit
+  Kreuz, gemauerter Brunnentrog mit Wasser, Ogham-Stein-Fragment,
+  ummauerte Anlage mit Wasserbecken, Govan-Hogback mit sichtbarem
+  Flechtband-Muster am unteren Rand — passend zur echten
+  Sketchfab-Beschreibung aus Nachtrag (5)). Keine offensichtlichen
+  Render-Fehler (verzerrte Texturen, falsche Kamera, schwarze Flächen).
+
+Flos Vorschlag, für schnellere Iterationszyklen künftig auf 2 URLs
+zurückzugehen (Govan + ein kleineres Modell, z. B.
+`freshford-st-lachtains-well-low-poly` mit nur 60s Gesamtlaufzeit) ist
+sinnvoll und braucht keine Code-Änderung — einfach zwei `--sketchfab`
+statt fünf übergeben.
+
+**Damit als real bestätigt gelten jetzt (vorher nur gegen Fixtures/
+Einzelmodelle geprüft):** `fetch`-Batch mit 5 echten URLs (S2/S8),
+`convert` gegen 5 unterschiedliche echte Modelle (S3, vorher nur
+Donaghmore/Govan 2 einzeln), `nexus` gegen 5 unterschiedliche echte
+Modelle ohne `-O` (S4), `mdcff` gegen echten `nexus`-Output statt
+Platzhalterdateien (S5), kombinierter `fetch`+Rundlauf-Modus über die
+volle CLI (S8, Nachtrag (6)).
+
+**Weiterhin nicht geprüft:** `bundle`/`build_fdo` selbst (S6/S7, noch
+nicht implementiert); `--all-slugs`s Fehlertoleranz mit einem *echten*
+partiellen Fehlschlag (z. B. ein korruptes Modell mitten in einem
+Mehrfach-Lauf) — dieser Lauf hatte 5/5 Erfolge, kein Fehlerfall dabei.
+
 ---
+
 
 ## Teil D — Offene Punkte
 
@@ -1197,16 +1282,14 @@ im Sandkasten weiterhin Blender.
   dupliziert. **Vier davon bereits real erfolgreich gefetcht** (Nachtrag
   2026-09-07 (5)): `callan-st-augustines-well-re-upload`,
   `freshford-st-lachtains-well-low-poly`, `ballymakeera-st-abbans-grave`,
-  `cork-ogham-stone-ciic-83-ucc-14` — `ballymakeera-st-abbans-grave` sogar
-  bereits real durch `convert` (Blender 5.2.1 LTS) gelaufen.
+  `cork-ogham-stone-ciic-83-ucc-14` — alle fünf inzwischen real durch
+  den kompletten `fetch`→`convert`→`nexus`→`mdcff`-Rundlauf gelaufen,
+  siehe Nachtrag 2026-09-07 (7).
 - **`bundle`/`build_fdo` (S6/S7) kennen `--slug` noch nicht** — sind aber
   ohnehin noch S1-Stubs (`nothing_to_do()`), betrifft niemanden, bis S6
   tatsächlich angegangen wird. Beim Implementieren von S6 `--slug`/
   `getattr(args, "slug", None)` nach demselben Muster wie S3–S5 ergänzen.
-- **Echter Batch-Fetch gegen reale, herunterladbare Modelle** ist noch
-  nicht geprüft (Netzwerkzugriff auf `api.sketchfab.com` vom Sandkasten
-  aus blockiert, `x-deny-reason: host_not_allowed`) — nächster sinnvoller
-  Schritt außerhalb dieses Chats: `python main.py --only fetch --sketchfab
-  ... --sketchfab ... [...]` mit einer Handvoll der Holy-Wells-URLs gegen
-  einen echten Token laufen lassen, dann `--all-slugs` für den vollen
-  Rundlauf (sobald S6/S7 stehen).
+- **Echter Batch-Fetch gegen reale, herunterladbare Modelle: erledigt**
+  (Nachtrag 2026-09-07 (7)) — 5/5 Modelle real gefetcht, konvertiert,
+  komprimiert und beschrieben, kein Fehler. Nächster offener Punkt ist
+  jetzt S6 (`bundle`), nicht mehr die Verifikation von S2–S5.
