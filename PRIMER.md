@@ -1069,6 +1069,49 @@ positionierte Kamera) oder das Canvas tatsächlich leer bleibt (echtes
 Render-Problem), und teilt die volle Browser-Konsole/Netzwerk-Liste
 (nicht nur den sichtbaren Ausschnitt) für die nächste Diagnose.
 
+### Nachtrag 2026-09-07 (3) — Ursache gefunden: Firefox/Intel-UHD-Graphics/ANGLE-Bug, kein Repo-Bug — S6 vollständig real bestätigt
+
+[#nachtrag-2026-09-07-3--ursache-gefunden-firefoxintel-uhd-graphicsangle-bug-kein-repo-bug--s6-vollständig-real-bestätigt](#nachtrag-2026-09-07-3--ursache-gefunden-firefoxintel-uhd-graphicsangle-bug-kein-repo-bug--s6-vollständig-real-bestätigt)
+
+Nach dem Icon-Fix (Nachtrag (2)): keine 404 mehr, `model.nxz` lädt
+vollständig (HTTP 200, 9,92 MB/9,92 MB, `Content-Length: 9915392` passt),
+die Framebuffer-Warnung (`checkFramebufferStatus: Framebuffer not
+complete, status: 0x8cd7`) blieb aber bestehen, Canvas weiterhin ohne
+erkennbare Geometrie.
+
+**Eingrenzung per Vergleichstest:** das offizielle, unveränderte
+3DHOP-Minimal-Paket mit dessen eigenem Demo-Modell (`gargo.nxz`, nicht
+Teil dieses Repos, siehe `assets/3dhop/NOTICE.md`) lokal per
+`python -m http.server` geladen — **identisches Symptom**, dasselbe leere/
+verkritzelte Canvas, in demselben Browser. Damit ausgeschlossen: unser
+Vendoring, unser Modell (Govan 2), unser ZIP-Layout — der Fehler tritt
+auch bei 3DHOPs eigenem, gänzlich unverändertem Paket auf.
+
+`about:support` → Grafik zeigt: `WebGL-1-Treiber: Renderer` = „Google
+Inc. (Intel) -- ANGLE (Intel, Intel(R) UHD Graphics (0x00008A56)
+Direct3D11 vs_5_0 ps_5_0, D3D11-27.20.100.9316)", `Compositing`:
+„WebRender Layer Compositor" — hardwarebeschleunigt (keine Software-
+Renderer-Zeile wie SwiftShader/llvmpipe, keine Blocklist-Einträge), läuft
+über Firefoxs ANGLE-Schicht auf einer echten Intel-UHD-Graphics-GPU, per
+Direct3D11 übersetzt.
+
+**Bestätigt:** in Chrome (gleiche Maschine, gleiches `dist/govan-2.zip`,
+gleicher `viewer/index.html`) wird das Modell korrekt angezeigt. **Damit
+ist die Ursache identifiziert und liegt außerhalb dieses Repos:** ein
+Firefox/ANGLE/Direct3D11-spezifischer WebGL-Bug auf dieser Intel-
+UHD-Graphics-Kombination (bekannte Bug-Kategorie bei dieser Konstellation,
+oft nach einem Grafiktreiber-Update ausgelöst — erklärt auch, warum es bei
+Flo früher schon lief). Kein Code-Fix in diesem Repo möglich oder nötig;
+betrifft 3DHOP/ANGLE/den Intel-Grafiktreiber, nicht `fdo-3d-packager`.
+
+**S6 ist damit vollständig real bestätigt**, nicht mehr nur gegen
+Fixtures im Sandkasten: kompletter Rundlauf `fetch`→`convert`→`nexus`→
+`mdcff`→`bundle` gegen zwei echte Sketchfab-Modelle (Govan 2, Freshford
+St Lachtain's Well), beide ZIPs korrekt aufgebaut, Viewer lädt das
+gepackte Modell vollständig und rendert es sichtbar korrekt (Chrome,
+Govan 2 mit Textur). Offen bleibt nur noch S7 (`build_fdo`, Rundlauf durch
+`fdo-squirrel`).
+
 ---
 
 ## S8 — Batch-Fetch & Multi-Slug-Infrastruktur
@@ -1489,16 +1532,12 @@ Mehrfach-Lauf) — dieser Lauf hatte 5/5 Erfolge, kein Fehlerfall dabei.
   `fdo-squirrel`) — und, davor, Flos echter Lauf von S6 gegen Govan 2 +
   Freshford auf der Windows-Maschine (siehe S6-Erledigt-Abschnitt für den
   genauen Befehl), um `viewer/index.html` wirklich im Browser zu prüfen.
-- **3DHOP-Viewer zeigt kein sichtbares Modell im Browser.** Echter Lauf
-  bei Flo (S6, Nachtrag 2026-09-07 (2)): `model.nxz` lädt (HTTP 200),
-  3DHOP initialisiert (`3DHOP version: 4.3` in der Konsole), aber das
-  Canvas bleibt ohne erkennbare Geometrie, dazu eine WebGL-
-  Framebuffer-Warnung. Ein falscher Icon-Dateiname wurde dabei gefunden
-  und behoben (siehe Nachtrag), löste das Rendering-Problem aber
-  vermutlich nicht, da Icons und WebGL-Canvas unabhängige Teile sind. Noch
-  nicht geklärt: Framebuffer-Warnung ursächlich oder harmlos (Pick-
-  Framebuffer, nicht Hauptrender-Pass)? Trackball-Startdistanz
-  (`startDistance`/`minMaxDist` aus `index.html`, unverändert von
-  Upstream) korrekt für real-skalierte `nxsbuild`-Ausgabe, oder muss sie
-  angepasst werden? Nächster Schritt liegt bei Flo (Browser-Diagnose, kein
-  Browser im Sandkasten verfügbar) — siehe Nachtrag für Details.
+- **3DHOP-Viewer zeigte kein sichtbares Modell im Browser — geklärt,
+  kein Repo-Bug.** Echter Lauf bei Flo (S6, Nachtrag 2026-09-07 (2)/(3)):
+  nach dem Icon-Fix lud `model.nxz` vollständig, Canvas blieb trotzdem
+  leer. Vergleichstest mit dem unveränderten offiziellen 3DHOP-Demo zeigte
+  identisches Symptom → kein Fehler in diesem Repo. Ursache: Firefox/
+  ANGLE/Direct3D11-spezifischer WebGL-Bug auf Flos Intel-UHD-Graphics-GPU
+  (`about:support` bestätigt Hardwarebeschleunigung, kein Software-
+  Fallback) — in Chrome funktioniert derselbe ZIP/Viewer korrekt. Kein
+  Handlungsbedarf in diesem Repo; Details siehe S6-Nachtrag (3).

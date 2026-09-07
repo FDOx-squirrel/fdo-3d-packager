@@ -4,7 +4,8 @@ Packages a 3D model -- fetched from Sketchfab or supplied as a local file --
 into a FAIR Digital Object (`fdo:3DDataFDO`) ready for ingest by
 [`fdo-squirrel`](https://github.com/FDOx-squirrel/fdo-squirrel).
 
-**Status: S6 done, verified against fixtures.** `fetch` (`--sketchfab`/
+**Status: S6 done, confirmed end to end against real Sketchfab models.**
+`fetch` (`--sketchfab`/
 `--local` -> `data/raw/<slug>/` + `source_info.json`, including sibling
 files like `scene.bin`/`textures/`; `--sketchfab` is repeatable for a
 batch fetch), `convert` (Blender headless -> `dist/<slug>/model.obj` +
@@ -18,8 +19,12 @@ selectable per model via `--slug`, across every fetched model via
 `--all-slugs`, or chained straight after `fetch` in one call. A real
 5-model batch run (2026-09-07, see `PRIMER.md` S8) completed
 `fetch`->`convert`->`nexus`->`mdcff` end to end without a single failure;
-`bundle` (S6) is implemented and verified against fixture data in the
-sandbox, not yet against a real Sketchfab model -- see `PRIMER.md` S6.
+`bundle` (S6) has since been confirmed against two real Sketchfab models
+(Govan 2, Freshford St Lachtain's Well), including the packaged
+[3DHOP](https://3dhop.net) viewer rendering the model correctly in a
+browser -- see `PRIMER.md` S6 for the full account, including a Firefox/
+Intel-UHD-Graphics/ANGLE WebGL quirk that turned out to be unrelated to
+this repo (works fine in Chrome).
 `build_fdo` is still an S1 stub -- next up. See [`PRIMER.md`](PRIMER.md)
 for the full plan, the decisions behind it, and what each step will
 actually do.
