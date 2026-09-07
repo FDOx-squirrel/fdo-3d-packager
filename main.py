@@ -13,6 +13,11 @@
     python main.py --only mdcff --publisher-label "Research Squirrel Engineers Network" --publisher-id "https://github.com/Research-Squirrel-Engineers"
     python main.py --slug govan-2                        run the default pipeline for one fetched model
     python main.py --all-slugs                            run the default pipeline for every fetched model
+    python main.py --from fetch --sketchfab "..." --sketchfab "..." --nxsbuild-bin ... --publisher-label ...
+        fetch, then automatically run the rest of the selection (convert
+        onwards) for exactly the model(s) just fetched -- --slug/--all-slugs
+        are not needed (and are ignored with a note if passed) since fetch
+        already tells the rest of the run which slug(s) to use.
 
 See PRIMER.md for what each step does and why. Steps are implemented one
 module per step under py/, each independently runnable
@@ -84,9 +89,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     # --slug picks one, --all-slugs loops every step in `selection` over
     # every slug found. With exactly one slug fetched, neither flag is
     # needed (auto-detected, see fdo_3d_packager_utils.py:resolve_slug()).
-    ap.add_argument("--slug", help="Which fetched model (data/raw/<slug>/) to act on. Auto-detected if exactly one exists.")
+    # Nachtrag 2026-09-07 (6): both are ignored (with a printed note, not
+    # an error) when `fetch` is part of the same run -- see main()'s own
+    # handling of that case.
+    ap.add_argument("--slug", help="Which fetched model (data/raw/<slug>/) to act on. Auto-detected if exactly one exists; ignored if fetch runs in the same invocation.")
     ap.add_argument("--all-slugs", action="store_true",
-                     help="Run the selected step(s) for every fetched model under data/raw/, one after another. Not combinable with --slug or a selection that includes fetch.")
+                     help="Run the selected step(s) for every fetched model under data/raw/, one after another. Not combinable with --slug; ignored (with a note) if fetch runs in the same invocation.")
 
     # Source selection for the fetch step (S2). Accepted here already so
     # --list/--dry-run document the eventual interface even when fetch isn't
@@ -140,32 +148,26 @@ def _check_known(step_id: Optional[str]) -> None:
 
 
 def resolve_selection(args: argparse.Namespace) -> list[str]:
+    """Just the step-id resolution (--only/--from/--skip/default) --
+    slug-selection validation (--slug vs --all-slugs vs fetch being part of
+    the run) lives in main() now, since whether fetch is present changes
+    what --slug/--all-slugs even mean (Nachtrag 2026-09-07 (6))."""
     _check_known(args.only)
     _check_known(args.frm)
     _check_known(args.skip)
 
     if args.only:
-        selection = [args.only]
-    elif not args.frm and not args.skip:
+        return [args.only]
+    if not args.frm and not args.skip:
         # Default run: every non-network step, in order.
-        selection = [s.id for s in STEPS if not s.network]
-    else:
-        ids = list(STEP_IDS)
-        if args.frm:
-            ids = ids[ids.index(args.frm):]
-        if args.skip:
-            ids = [i for i in ids if i != args.skip]
-        selection = ids
+        return [s.id for s in STEPS if not s.network]
 
-    if args.all_slugs:
-        if args.slug:
-            raise SystemExit("--all-slugs and --slug are mutually exclusive -- pick one")
-        if "fetch" in selection:
-            raise SystemExit(
-                "--all-slugs can't include fetch -- fetch takes --sketchfab/--local directly, "
-                "not a slug (it's what creates them); run it separately first"
-            )
-    return selection
+    ids = list(STEP_IDS)
+    if args.frm:
+        ids = ids[ids.index(args.frm):]
+    if args.skip:
+        ids = [i for i in ids if i != args.skip]
+    return ids
 
 
 def print_list() -> None:
@@ -188,9 +190,8 @@ def run_selection_once(selection: list[str], args: argparse.Namespace) -> tuple[
     at (None is fine -- resolve_slug() inside load_source_info() picks the
     single fetched model, or the per-step code raises a clear error).
     Returns (exit_code_or_None, had_warning) -- exit_code is None only when
-    every step in the selection succeeded, so main()/run_all_slugs() can
-    tell "stop everything now" apart from "this slug is done, warnings
-    noted"."""
+    every step in the selection succeeded, so main() can tell "this slug
+    failed" apart from "this slug is done, warnings noted"."""
     timings: list[tuple[str, float]] = []
     had_warning = False
     for step_id in selection:
@@ -217,8 +218,97 @@ def run_selection_once(selection: list[str], args: argparse.Namespace) -> tuple[
     return None, had_warning
 
 
+def run_over_slugs(selection: list[str], slugs: list[str], args: argparse.Namespace) -> tuple[int, bool]:
+    """Runs `selection` once per slug in `slugs`.
+
+    Nachtrag 2026-09-07 (6): a failing slug no longer aborts the whole run
+    when more than one slug is in play -- each is independent (same
+    reasoning as the batch-fetch loop in step_fetch.py: one bad model
+    shouldn't cost you the other nine), and the run only fails outright if
+    *every* slug failed. With a single slug (the pre-batch, still by far
+    the most common case), a failure still returns immediately -- there is
+    nothing to "continue past". Returns (exit_code, had_warning)."""
+    had_warning = False
+    failed: list[str] = []
+    for slug in slugs:
+        if len(slugs) > 1:
+            print(f"\n=== slug: {slug} ===")
+        args.slug = slug
+        exit_code, slug_had_warning = run_selection_once(selection, args)
+        if exit_code is not None:
+            if len(slugs) == 1:
+                return exit_code, had_warning
+            failed.append(slug)
+            continue
+        had_warning = had_warning or slug_had_warning
+
+    if failed:
+        if len(failed) == len(slugs):
+            print(f"\nAll {len(slugs)} slug(s) failed: {', '.join(failed)}", file=sys.stderr)
+            return 1, had_warning
+        print(f"\nWarning: {len(failed)}/{len(slugs)} slug(s) failed: {', '.join(failed)}", file=sys.stderr)
+        had_warning = True
+    return 0, had_warning
+
+
+def _run_fetch_then_rest(selection: list[str], args: argparse.Namespace) -> int:
+    """`fetch` is part of `selection` -- Nachtrag 2026-09-07 (6): run it
+    exactly once (never per-slug; slugs don't exist yet), then continue
+    the rest of `selection` for exactly the model(s) it just fetched --
+    read off args.fetched_slugs, which step_fetch.py's run() sets on
+    success (see its own docstring). --slug/--all-slugs are ignored here
+    (noted, not an error) since fetch already answers the "which slug(s)"
+    question more precisely than either could: --all-slugs would also
+    reprocess unrelated older fetches, and --slug can't name a model that
+    doesn't exist until fetch has run."""
+    if args.slug or args.all_slugs:
+        print(
+            "[fetch] --slug/--all-slugs ignored: fetch is part of this run, "
+            "continuing with the model(s) just fetched instead",
+            file=sys.stderr,
+        )
+
+    start = time.monotonic()
+    try:
+        ok, message = run_step(STEP_BY_ID["fetch"], args)
+    except Exception as exc:  # noqa: BLE001 -- report, do not swallow
+        print(f"[fetch] ERROR: {exc}", file=sys.stderr)
+        return 1
+    elapsed = time.monotonic() - start
+    print(f"[fetch] {message} ({elapsed:.2f}s)")
+    if not ok:
+        print("[fetch] step reported failure, stopping.", file=sys.stderr)
+        return 1
+    fetch_had_warning = message.lower().startswith("warning")
+
+    rest = [s for s in selection if s != "fetch"]
+    if not rest:
+        # --only fetch: nothing left to chain, just report fetch's own result.
+        if args.strict and fetch_had_warning:
+            print("\n--strict: warnings present, failing.", file=sys.stderr)
+            return 1
+        return 0
+
+    slugs = getattr(args, "fetched_slugs", None) or []
+    if not slugs:
+        # ok=True should always come with at least one slug (module
+        # contract of step_fetch.py:run()) -- guard anyway rather than
+        # silently iterating zero times if that contract is ever violated.
+        print("[fetch] reported success but named no fetched slug(s) to continue with", file=sys.stderr)
+        return 1
+
+    exit_code, had_warning = run_over_slugs(rest, slugs, args)
+    if exit_code != 0:
+        return exit_code
+    if args.strict and (fetch_had_warning or had_warning):
+        print("\n--strict: warnings present, failing.", file=sys.stderr)
+        return 1
+    return 0
+
+
 def main() -> int:
     args = build_arg_parser().parse_args()
+    args.fetched_slugs = None  # set by step_fetch.py's run() on success
 
     if args.list:
         print_list()
@@ -230,10 +320,20 @@ def main() -> int:
         print("Plan (dry run, nothing executed):")
         for step_id in selection:
             print(f"  - {step_id}")
-        if args.all_slugs:
+        if "fetch" in selection:
+            print("\nfetch is part of this run: the rest would continue with "
+                  "whichever model(s) it fetches, not --all-slugs discovery.")
+        elif args.all_slugs:
             slugs = discover_slugs()
             print(f"\n--all-slugs: would run the above for {len(slugs)} slug(s): {', '.join(slugs) or '(none found)'}")
         return 0
+
+    if "fetch" in selection:
+        return _run_fetch_then_rest(selection, args)
+
+    if args.all_slugs and args.slug:
+        print("--all-slugs and --slug are mutually exclusive -- pick one", file=sys.stderr)
+        return 1
 
     if args.all_slugs:
         slugs = discover_slugs()
@@ -243,17 +343,10 @@ def main() -> int:
     else:
         slugs = [args.slug]  # a single None is fine -- resolve_slug() auto-detects
 
-    overall_had_warning = False
-    for slug in slugs:
-        if len(slugs) > 1:
-            print(f"\n=== slug: {slug} ===")
-        args.slug = slug
-        exit_code, had_warning = run_selection_once(selection, args)
-        if exit_code is not None:
-            return exit_code
-        overall_had_warning = overall_had_warning or had_warning
-
-    if args.strict and overall_had_warning:
+    exit_code, had_warning = run_over_slugs(selection, slugs, args)
+    if exit_code != 0:
+        return exit_code
+    if args.strict and had_warning:
         print("\n--strict: warnings present, failing.", file=sys.stderr)
         return 1
     return 0

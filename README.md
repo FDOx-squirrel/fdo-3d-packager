@@ -108,10 +108,26 @@ python main.py --all-slugs
 `--skip` selects) for exactly that model; with only one model ever
 fetched, `--slug` is optional (auto-detected). `--all-slugs` loops the
 selection over every fetched model in turn, printing a `=== slug: ... ===`
-banner between them; it can't be combined with `--slug`, and can't include
-`fetch` in the selection (fetch takes `--sketchfab`/`--local` directly,
-not a slug -- run it separately first). `--strict` still applies to the
-whole run: a warning on any one slug fails the run at the end.
+banner between them; it can't be combined with `--slug`. With more than
+one slug in play, a failure on one no longer aborts the rest -- each slug
+is independent, and the run only fails outright if *every* slug failed
+(a partial run prints `Warning: N/M slug(s) failed: ...` and still exits
+0, `--strict` turns that into a failure). With a single slug, a failure
+still stops the run immediately, same as before -- there's nothing to
+skip ahead to.
+
+`fetch` can be part of the same `main.py` call instead of a separate one:
+
+```cmd
+python main.py --from fetch --sketchfab "https://sketchfab.com/3d-models/aaa..." --sketchfab "https://sketchfab.com/3d-models/bbb..." --nxsbuild-bin "C:\nexus\nxsbuild.exe" --publisher-label "Research Squirrel Engineers Network"
+```
+
+`fetch` always runs exactly once (never per-slug -- the slugs don't exist
+before it runs), then the rest of the selection runs automatically for
+exactly the model(s) it just fetched, not every model ever fetched.
+`--slug`/`--all-slugs` aren't needed here (and are ignored, with a note,
+if passed) -- `fetch` already knows precisely which slug(s) matter more
+reliably than either flag could.
 
 Once `fetch` has run, `convert` picks up `data/raw/<slug>/source_info.json`
 automatically:
@@ -174,13 +190,22 @@ supply one (this happens for every `--local` run, since it has no
 For `--sketchfab` runs, `mdcff` also reads back `data/raw/<slug>/sketchfab_meta.json`
 (the full API response `fetch` already saved) to enrich the output beyond
 what `source_info.json` carries: Sketchfab tags/categories become extra
-`keywords`, `license.slug` maps to a real SPDX id for CITATION.cff (more
-reliable than Sketchfab's human-readable license label), `publishedAt`/
-`createdAt` become `date_released`/`date_created`, and face/vertex counts
-become a short `technique.processing` note. None of this is required --
-`--local` runs (no `sketchfab_meta.json`) still work, just without the
-enrichment; `--source-note` (`--local`'s free-text acquisition note) always
-lands in `technique.acquisition.method` regardless of input mode.
+`keywords`, `publishedAt`/`createdAt` become `date_released`/`date_created`,
+and face/vertex counts become a short `technique.processing` note. None of
+this is required -- `--local` runs (no `sketchfab_meta.json`) still work,
+just without the enrichment; `--source-note` (`--local`'s free-text
+acquisition note) always lands in `technique.acquisition.method`
+regardless of input mode.
+
+CITATION.cff's `license` field (SPDX only, unlike MD.cff's free-text
+`license.label`) is derived from `licence_url` when it's a recognisable
+Creative Commons URL (`.../licenses/by/4.0/` -> `CC-BY-4.0`,
+`.../publicdomain/zero/1.0/` -> `CC0-1.0`) -- this works for both
+`--sketchfab` and `--local` (a plain SPDX-looking `--licence` value is
+still used as a last-resort fallback). Earlier versions of this step
+guessed from Sketchfab's `license.slug` directly and got the slug format
+wrong (`"cc-by"` instead of the real `"by"`) -- corrected 2026-09-07 (5)
+against real API data.
 
 ## External requirements (not pip-installable)
 

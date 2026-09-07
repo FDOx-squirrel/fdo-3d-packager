@@ -191,6 +191,10 @@ Eigenschaften, an denen sich ein Lauf messen lässt:
 | Slug-Auswahl bei mehreren gefetchten Modellen | `--slug`-Flag mit Auto-Fallback, wenn genau ein Slug existiert; bei mehreren ohne `--slug` ein Fehler mit Liste der gefundenen Slugs, kein Raten | 2026-09-07 (3) |
 | `data/raw/source_info.json`: Singleton oder pro Slug? | pro Slug (`data/raw/<slug>/source_info.json`) — folgt zwingend aus der Batch-Entscheidung, sonst überschreibt ein zweiter `fetch`-Aufruf den ersten, bevor S3–S5 ihn gesehen haben. Kein Migrationspfad für alte Top-Level-Dateien, `data/raw/` ist regenerierbar (A3) | 2026-09-07 (3) |
 | Metadaten-Overrides (`--title` etc.) bei Batch-`--sketchfab` | harter Fehler, nicht stillschweigend ignoriert, wenn mehr als eine `--sketchfab`-URL zusammen mit `--title`/`--creator`/`--creator-profile`/`--licence`/`--licence-url`/`--source-note` übergeben wird — ein Wert kann nicht für mehrere unterschiedliche Modelle gleichzeitig richtig sein | 2026-09-07 (3) |
+| Sketchfab-`license.slug`-Zuordnung war falsch | **Korrektur, kein Vorschlag:** `SKETCHFAB_LICENSE_SLUG_TO_SPDX` nutzte erfundene Slugs (`"cc-by"`), die reale API liefert `"by"` (Befund gegen echte Govan-2-Daten, 2026-09-07 im Chat hochgeladen — die vorherige "Verifikation" gegen eine inoffizielle Drittanbieter-Schema-Rekonstruktion war unzureichend). Primärer Mechanismus jetzt `_spdx_from_license_url()`: leitet die SPDX-ID aus der CC-Lizenz-URL her (`creativecommons.org/licenses/by/4.0/` → `CC-BY-4.0`), funktioniert generisch für jede CC-URL, nicht nur Sketchfab-spezifisch, und braucht `sketchfab_meta.json` gar nicht (nutzt `licence_url` aus `source_info.json`). Der (jetzt korrigierte) Slug-Abgleich bleibt als Fallback | 2026-09-07 (5), Korrektur |
+| `model_file`-Pfadtrenner plattformabhängig | Bug: `str(dest.relative_to(DATA_RAW))` liefert unter Windows Backslashes, die unter POSIX (Sandkasten, potenziell CI) als einzelnes komisches Dateinamenszeichen statt als Pfadtrenner interpretiert werden — belegt an echten, in diesem Chat hochgeladenen `source_info.json`-Daten (`"govan-2\\govan-2.gltf"`). Fix: `.as_posix()` statt `str()` beim Schreiben; `DATA_RAW / model_file` liest Forward-Slashes unter Windows genauso korrekt wie unter POSIX, also keine Änderung an lesender Seite nötig | 2026-09-07 (5) |
+| `--all-slugs` bei fehlschlagendem Slug | **Ergänzt/geändert 2026-09-07 (6):** springt jetzt zum nächsten Slug weiter statt den ganzen Lauf abzubrechen (Muster: Batch-Fetch) — Fehler nur, wenn **alle** Slugs fehlschlagen, sonst `Warning:` (blockiert nur `--strict`). Bei genau einem Slug (Normalfall ohne `--all-slugs`) bricht ein Fehler weiterhin sofort ab, da es nichts zum Weiterspringen gibt | 2026-09-07 (6) |
+| `fetch` + Rundlauf in einem `main.py`-Aufruf | Ja — sobald `fetch` Teil der gewählten Schritte ist (`--from fetch` o. ä.), läuft `fetch` einmalig, danach automatisch der Rest **nur für die gerade neu geholten Slug(s)** (`args.fetched_slugs`, von `step_fetch.py` gesetzt), nicht für alle unter `data/raw/`. `--slug`/`--all-slugs` werden in diesem Fall ignoriert (mit Hinweis auf stderr, kein Fehler) — beide könnten die Frage "welche(r) Slug(s)" ohnehin nicht besser beantworten als `fetch` selbst | 2026-09-07 (6) |
 
 ### A5 Was in welchem Chat hochgeladen wird
 
@@ -1002,6 +1006,127 @@ aber nicht der komplette Download-Pfad für mehrere echte Modelle
 hintereinander. `bundle`/`build_fdo` (S6/S7) kennen `--slug`/`--all-slugs`
 noch nicht, sind aber ohnehin noch S1-Stubs.
 
+### Nachtrag 2026-09-07 (5) — echter Batch-Fetch bei Flo, zwei Bugs an echten Daten gefunden
+
+[#nachtrag-2026-09-07-5--echter-batch-fetch-bei-flo-zwei-bugs-an-echten-daten-gefunden](#nachtrag-2026-09-07-5--echter-batch-fetch-bei-flo-zwei-bugs-an-echten-daten-gefunden)
+
+**Echter Testfall, zum Merken:** Flo hat auf seiner Windows-Maschine
+tatsächlich einen 5-URL-Batch-Fetch laufen lassen und committed:
+
+```cmd
+python main.py --only fetch --sketchfab "https://sketchfab.com/3d-models/govan-2-b9dc56bfc1d342f6b4da3281e6629c07" --sketchfab "https://sketchfab.com/3d-models/callan-st-augustines-well-re-upload-9feacac0fda14a189a1a59d2e129b1e4" --sketchfab "https://sketchfab.com/3d-models/freshford-st-lachtains-well-low-poly-ae1e1f4daa7d433dbbf076407134e81e" --sketchfab "https://sketchfab.com/3d-models/ballymakeera-st-abbans-grave-fc5578e364cf4ec6b6ec871229654690" --sketchfab "https://sketchfab.com/3d-models/cork-ogham-stone-ciic-83-ucc-14-4346e42eff7e4a979dbbec2264afc87d"
+```
+
+Alle 5/5 erfolgreich geholt (`[fetch] fetched 5/5 Sketchfab model(s)`),
+danach `python main.py --all-slugs --from convert`: Blender 5.2.1 LTS
+konvertierte `ballymakeera-st-abbans-grave` (erster Slug alphabetisch)
+tatsächlich real — 7 Mesh-Objekte importiert, `relink_images()` fand 2
+Texturen, `model.obj`+`preview.png` erfolgreich geschrieben (57,80s). Das
+ist die erste echte End-to-End-Bestätigung von `convert` (S3) und `fetch`
+(S2/S8) in Produktion, nicht nur im Sandkasten. Danach schlug `nexus`
+(S4) fehl: `nxsbuild binary 'nxsbuild' not found`. Das ist **kein**
+Kapazitäts-/Größenproblem (Flos eigene Vermutung im Chat, "vielleicht
+sind die 5 auch zu viel") — der Lauf hatte schlicht kein
+`--nxsbuild-bin`/`NXSBUILD_BIN` gesetzt (in früheren S4-Tests wurde
+`C:\Nexus_43\nxsbuild.exe` benutzt); wäre bei einem einzelnen Modell
+identisch aufgetreten. Vor diesem Fix (Nachtrag 2026-09-07 (6) unten)
+hätte dieser eine Fehler außerdem den gesamten `--all-slugs`-Lauf
+abgebrochen, ohne die anderen 4 Slugs überhaupt zu versuchen.
+
+Die echten `source_info.json`/`sketchfab_meta.json` für `govan-2` aus
+diesem Lauf wurden im Chat hochgeladen und haben zwei echte Bugs
+aufgedeckt, beide gefixt:
+
+- **`SKETCHFAB_LICENSE_SLUG_TO_SPDX` war komplett falsch.** Die echte API
+  liefert `license.slug: "by"` für CC Attribution, nicht `"cc-by"` wie im
+  ersten S5-Patch angenommen (aus einer inoffiziellen
+  Drittanbieter-Schema-Rekonstruktion übernommen, nie gegen echte Daten
+  geprüft — die damalige "Verifikation" war unzureichend, siehe A4-Zeile
+  dazu). Primärmechanismus jetzt `_spdx_from_license_url()` in
+  `step_mdcff.py`: leitet die SPDX-ID direkt aus der CC-Lizenz-URL her
+  (`.../licenses/by/4.0/` → `CC-BY-4.0`, `.../publicdomain/zero/1.0/` →
+  `CC0-1.0`) — generisch, nicht Sketchfab-spezifisch, funktioniert auch
+  für `--local` mit einer Standard-CC-URL als `--licence-url`. Der
+  (jetzt korrigierte) Slug-Abgleich bleibt als zweiter Fallback für den
+  Fall, dass die URL mal nicht parsbar ist, aber der Slug vorliegt.
+- **`model_file` enthielt Windows-Backslashes** (`"govan-2\\govan-2.gltf"`)
+  — `str(dest.relative_to(DATA_RAW))` liefert unter Windows
+  `WindowsPath.__str__()`, also Backslashes; unter POSIX (Sandkasten,
+  potenzielle CI-Runner) wird das nicht als Pfadtrenner erkannt, sondern
+  als ein einzelnes Zeichen im Dateinamen — `DATA_RAW / model_file` würde
+  dort ins Leere laufen. Fix: `.as_posix()` statt `str()` in
+  `step_fetch.py` (beide Stellen: `_fetch_one_sketchfab()`, `run_local()`).
+  Lesende Seite (`step_convert.py`: `DATA_RAW / info["model_file"]`)
+  brauchte keine Änderung — Windows-`pathlib` akzeptiert Forward-Slashes
+  beim Aufbau eines Pfads genauso wie Backslashes.
+
+Beide echten Govan-2-Dateien (nach dem Fix, `model_file`-Trenner von Hand
+auf Forward-Slash umgestellt, da hier nicht neu gefetcht werden kann)
+durch `mdcff` gejagt: `MD.cff` validiert weiterhin gegen `fdo-squirrel`s
+echten Validator, `CITATION.cff` bekommt jetzt korrekt `license:
+CC-BY-4.0` (vorher hätte die falsche Slug-Zuordnung nie gegriffen, wäre
+also stumm auf die Label-Heuristik zurückgefallen — mit demselben Ergebnis
+in diesem einen Fall zufällig, aber nicht verlässlich für andere
+CC-Varianten wie `by-sa`/`by-nc-nd`). `_spdx_from_license_url()` zusätzlich
+gegen vier synthetische CC-URL-Varianten (`by`, `by-sa`, `by-nc-nd`,
+`publicdomain/zero`) sowie `None`/eine Nicht-CC-URL geprüft — alle korrekt.
+Determinismus erneut bestätigt.
+
+### Nachtrag 2026-09-07 (6) — `--all-slugs` überspringt Fehler, `fetch` + Rundlauf kombinierbar
+
+[#nachtrag-2026-09-07-6--all-slugs-überspringt-fehler-fetch--rundlauf-kombinierbar](#nachtrag-2026-09-07-6--all-slugs-überspringt-fehler-fetch--rundlauf-kombinierbar)
+
+Zwei Chat-Entscheidungen (Form, siehe A4), ausgelöst durch den echten
+Batch-Testfall oben:
+
+- **`--all-slugs` bricht nicht mehr beim ersten fehlschlagenden Slug ab.**
+  `main.py`s neue `run_over_slugs()`-Funktion versucht jeden Slug
+  unabhängig, sammelt Fehlschläge, und meldet nur dann einen harten
+  Fehler (exit 1), wenn **alle** Slugs fehlgeschlagen sind — sonst
+  `Warning: N/M slug(s) failed: ...` (blockiert nur `--strict`). Bei genau
+  einem Slug (kein `--all-slugs`, der bei weitem häufigste Fall) bleibt
+  das alte Verhalten exakt erhalten: ein Fehler bricht sofort ab, es gibt
+  nichts zum Weiterspringen.
+- **`fetch` kann jetzt Teil derselben `main.py`-Auswahl sein**
+  (`--from fetch ...`), statt zwingend ein separater Aufruf zu sein.
+  `main.py`s neue `_run_fetch_then_rest()`: `fetch` läuft einmalig (nie
+  pro Slug — die Slugs existieren ja noch nicht), danach der Rest der
+  Auswahl automatisch für genau die Slug(s), die `fetch` gerade erzeugt
+  hat (`args.fetched_slugs`, neu von `step_fetch.py`s `run()` gesetzt) —
+  nicht für alle unter `data/raw/` gefundenen. `--slug`/`--all-slugs`
+  werden in diesem Fall ignoriert (Hinweis auf stderr, kein Fehler) — der
+  alte harte `SystemExit`-Guard gegen `--all-slugs`+`fetch` ist damit
+  hinfällig und entfernt.
+
+**Getestet** (kein Blender/Nexus im Sandkasten, aber die Orchestrierung
+selbst ist reines Python):
+
+- `--all-slugs`-Fehlertoleranz: zwei `--local`-Slugs angelegt, einem
+  bewusst `model.nxz` vorenthalten (mdcff-Vollständigkeits-Gate greift) —
+  `--all-slugs --only mdcff` verarbeitet den intakten Slug trotzdem,
+  meldet `Warning: 1/2 slug(s) failed`, exit 0 ohne `--strict`, exit 1
+  mit `--strict`. Beide Slugs kaputt gemacht (auch `model.nxz` beim
+  ersten gelöscht) → `All 2 slug(s) failed`, exit 1 auch ohne `--strict`.
+- Kombinierter `fetch`+Rundlauf: direkt gegen `_run_fetch_then_rest()`
+  getestet (nicht über die volle CLI, da `--skip` nur einen Schritt auf
+  einmal ausschließen kann und `convert`/`nexus` im Sandkasten ohnehin
+  fehlschlagen würden) — ein Slug (`fetch`+`mdcff`), zwei Slugs
+  (`fetch` liefert `args.fetched_slugs = [s1, s2]`, `mdcff` läuft über
+  beide mit `=== slug: ... ===`-Trennzeilen), `--only fetch` (kein
+  Rundlauf danach, nur `fetch`s eigenes Ergebnis), `--slug`/`--all-slugs`
+  zusammen mit `fetch` in der Auswahl (Hinweis statt Fehler, Lauf
+  trotzdem erfolgreich). `--dry-run --from fetch` zeigt den Plan inkl.
+  `fetch` und einen Hinweis statt einer `--all-slugs`-Slug-Liste.
+  Alle erzeugten `MD.cff` weiterhin valide gegen `fdo-squirrel`s echten
+  Validator.
+
+**Nicht geprüft:** der kombinierte Modus über die echte CLI mit echtem
+Blender/Nexus (nur die Orchestrierungslogik direkt getestet, siehe oben);
+ob `--all-slugs`s Fehlertoleranz sich mit dem kombinierten `fetch`-Modus
+gleich verhält, wenn `convert`/`nexus` bei einem von mehreren echten
+Modellen real fehlschlagen (z. B. bei einem korrupten glTF) — dafür fehlt
+im Sandkasten weiterhin Blender.
+
 ---
 
 ## Teil D — Offene Punkte
@@ -1069,7 +1194,11 @@ noch nicht, sind aber ohnehin noch S1-Stubs.
   Well/Q126454422, …) — zusätzlich zu Donaghmore/Govan 2 als reale
   Testfälle für künftige `--sketchfab`-Läufe, sobald Netzwerk/Blender/Nexus
   verfügbar sind. Liste liegt nur im Chat-Verlauf, nicht in diesem Dokument
-  dupliziert.
+  dupliziert. **Vier davon bereits real erfolgreich gefetcht** (Nachtrag
+  2026-09-07 (5)): `callan-st-augustines-well-re-upload`,
+  `freshford-st-lachtains-well-low-poly`, `ballymakeera-st-abbans-grave`,
+  `cork-ogham-stone-ciic-83-ucc-14` — `ballymakeera-st-abbans-grave` sogar
+  bereits real durch `convert` (Blender 5.2.1 LTS) gelaufen.
 - **`bundle`/`build_fdo` (S6/S7) kennen `--slug` noch nicht** — sind aber
   ohnehin noch S1-Stubs (`nothing_to_do()`), betrifft niemanden, bis S6
   tatsächlich angegangen wird. Beim Implementieren von S6 `--slug`/

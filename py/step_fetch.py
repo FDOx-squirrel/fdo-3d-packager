@@ -50,6 +50,14 @@ Per-model metadata overrides (--title/--creator/--creator-profile/
 mislabel N-1 of them. Passing any of them together with more than one
 --sketchfab URL is therefore a hard error, not a warning (see
 run_sketchfab_batch()).
+
+Nachtrag 2026-09-07 (6): `run()` (and run_sketchfab_batch()/run_local())
+now set `args.fetched_slugs` to the list of successfully fetched slugs
+before returning. `main.py`'s combined "`fetch` is part of this run" mode
+reads that to know which slug(s) to continue the rest of the pipeline
+for, without needing `--slug`/`--all-slugs` -- see main.py's own
+`_run_fetch_then_rest()`. Standalone use (`python py/step_fetch.py ...`)
+simply leaves that attribute unread, harmless.
 """
 from __future__ import annotations
 
@@ -235,14 +243,24 @@ def build_source_info(
 ) -> dict:
     """The S2 -> S3/S4/S5 handoff contract.
 
-    Every later step reads data/raw/source_info.json rather than
+    Every later step reads data/raw/<slug>/source_info.json (see
+    fdo_3d_packager_utils.py:load_source_info()/resolve_slug()) rather than
     re-deriving the slug or re-parsing CLI args: `model_file` tells
     `convert` (S3) which file under data/raw/ to feed to Blender, and
     title/creator/licence/source_url feed MD.cff + CITATION.cff (S5).
+    `model_file` is always POSIX-style (forward slashes, via
+    Path.as_posix() at the call site) even though the reference platform
+    is Windows (PRIMER.md A3) -- pathlib on Windows accepts forward
+    slashes fine when reading it back, but a stored backslash is just
+    another character on POSIX and breaks path splitting there (Befund
+    2026-09-07 (5), found in real captured source_info.json/
+    sketchfab_meta.json from a real Windows run, shared in this chat).
     `todo_placeholders` lists which required fields fell back to a
     "TODO: ..." placeholder because neither Sketchfab metadata nor a CLI
-    flag supplied them -- S5 refuses to build MD.cff while this list is
-    non-empty (Beschluss dieses Schritts, siehe PRIMER.md).
+    flag supplied them -- `mdcff` (S5) writes MD.cff anyway but reports a
+    `Warning: ...` while this list is non-empty (Beschluss dieses Schritts,
+    siehe PRIMER.md; not a hard refusal, corrected from an earlier version
+    of this docstring).
     """
     todos: list[str] = []
 
@@ -329,7 +347,7 @@ def _fetch_one_sketchfab(url: str, args: argparse.Namespace) -> tuple[bool, str,
     write_json(meta, DATA_RAW / slug / "sketchfab_meta.json")
 
     info = source_info_from_sketchfab(meta, url, uid, args)
-    info["model_file"] = str(dest.relative_to(DATA_RAW))
+    info["model_file"] = dest.relative_to(DATA_RAW).as_posix()
     write_json(info, DATA_RAW / slug / "source_info.json")
 
     # Raw download intermediates are not the deliverable and would make the
@@ -366,7 +384,12 @@ def run_sketchfab_batch(args: argparse.Namespace) -> tuple[bool, str]:
     A single bad URL in a larger batch does not abort the rest: each is
     fetched independently and the run only fails outright if *every* URL
     failed, mirroring the Warning/--strict pattern the rest of this repo
-    already uses for partial-but-usable results."""
+    already uses for partial-but-usable results.
+
+    Sets `args.fetched_slugs` to the list of successfully fetched slugs
+    (empty on total failure) -- main.py's `--from fetch ...` combined mode
+    (Nachtrag 2026-09-07 (6)) reads this to know which model(s) to run the
+    rest of the pipeline for, without needing --slug/--all-slugs."""
     urls = args.sketchfab
     if len(urls) > 1:
         overrides = [
@@ -375,6 +398,7 @@ def run_sketchfab_batch(args: argparse.Namespace) -> tuple[bool, str]:
         ]
         if overrides:
             flags = ", ".join(f"--{name.replace('_', '-')}" for name in overrides)
+            args.fetched_slugs = []
             return False, (
                 f"{flags} not supported with multiple --sketchfab URLs -- each model already "
                 "carries its own Sketchfab metadata, one override value can't apply to all of them"
@@ -384,11 +408,13 @@ def run_sketchfab_batch(args: argparse.Namespace) -> tuple[bool, str]:
         # Keep the exact single-item message shape from before batch
         # support existed -- no "[slug] "/"N/M" wrapper noise for what is
         # still overwhelmingly the common case.
-        ok, message, _slug = _fetch_one_sketchfab(urls[0], args)
+        ok, message, slug = _fetch_one_sketchfab(urls[0], args)
+        args.fetched_slugs = [slug] if ok and slug else []
         return ok, message
 
     results: list[str] = []
     ok_count = 0
+    fetched_slugs: list[str] = []
     for url in urls:
         try:
             ok, message, slug = _fetch_one_sketchfab(url, args)
@@ -396,8 +422,11 @@ def run_sketchfab_batch(args: argparse.Namespace) -> tuple[bool, str]:
             ok, message, slug = False, str(exc), None
         if ok:
             ok_count += 1
+            if slug:
+                fetched_slugs.append(slug)
         results.append(f"[{slug or url}] {message}")
 
+    args.fetched_slugs = fetched_slugs
     if ok_count == 0:
         return False, f"all {len(urls)} Sketchfab fetches failed:\n" + "\n".join(results)
 
@@ -415,6 +444,7 @@ def run_sketchfab_batch(args: argparse.Namespace) -> tuple[bool, str]:
 def run_local(args: argparse.Namespace) -> tuple[bool, str]:
     model_in = Path(args.local).expanduser().resolve()
     if not model_in.exists():
+        args.fetched_slugs = []
         return False, f"local file not found: {model_in}"
 
     warning = ""
@@ -428,7 +458,7 @@ def run_local(args: argparse.Namespace) -> tuple[bool, str]:
     info = build_source_info(
         input_mode="local",
         slug=slug,
-        model_file=str(dest.relative_to(DATA_RAW)),
+        model_file=dest.relative_to(DATA_RAW).as_posix(),
         title=args.title,
         description=None,
         creator=args.creator,
@@ -451,6 +481,7 @@ def run_local(args: argparse.Namespace) -> tuple[bool, str]:
         warn_reasons.append(f"referenced sibling file(s) missing, S3 will fail to import: {', '.join(missing_siblings)}")
     if warn_reasons and not message.startswith("Warning"):
         message = "Warning: " + message + " -- " + "; ".join(warn_reasons)
+    args.fetched_slugs = [slug]
     return True, message
 
 
@@ -459,9 +490,14 @@ def run_local(args: argparse.Namespace) -> tuple[bool, str]:
 # --------------------------------------------------------------------------
 
 def run(args: argparse.Namespace) -> tuple[bool, str]:
+    """Sets `args.fetched_slugs` (list of successfully fetched slugs) on
+    every path -- run_sketchfab_batch()/run_local() do the real work, this
+    just guards the "neither flag given" case so the attribute always
+    exists after calling this, for main.py's combined fetch+rest mode."""
     sketchfab = getattr(args, "sketchfab", None)
     local = getattr(args, "local", None)
     if not sketchfab and not local:
+        args.fetched_slugs = []
         return False, "one of --sketchfab / --local is required for the fetch step"
     if sketchfab:
         return run_sketchfab_batch(args)

@@ -80,27 +80,48 @@ DEFAULT_KEYWORDS = [
     {"label": "Cultural Heritage", "id": "http://www.wikidata.org/entity/Q110840"},
 ]
 
-# Sketchfab's Creative Commons license slugs (Data API v3 `license.slug`)
-# mapped to real SPDX identifiers, for CITATION.cff's `license` key (SPDX
-# only, unlike MD.cff's free-text `license.label`). "st" (paid "Standard"
-# license) and "ed" ("Editorial", not freely reusable) have no SPDX
-# equivalent and are deliberately absent -- CITATION.cff gets no `license`
-# line for those, not a wrong one.
+# Corrected 2026-09-07 (5) against a real Data API v3 response (Govan 2,
+# uploaded in this chat): Sketchfab's license.slug for "CC Attribution" is
+# "by", NOT "cc-by" -- the earlier version of this dict used "cc-by" etc.,
+# reconstructed from an unofficial third-party OpenAPI/JSON-Schema profile
+# (api-evangelist/sketchfab) that turned out to have invented the wrong
+# slug format. It would never have matched a single real Sketchfab
+# response. Kept only as a fallback now -- see _spdx_from_license_url()
+# below, which parses the CC license URL (already in source_info.json's
+# licence_url for every real --sketchfab run, and standard enough to work
+# for --local too) instead of relying on a Sketchfab-specific slug at all.
+# "st" (paid "Standard" license) and "ed" ("Editorial", not freely
+# reusable) have no SPDX equivalent and are deliberately absent.
 SKETCHFAB_LICENSE_SLUG_TO_SPDX = {
-    "cc-by": "CC-BY-4.0",
-    "cc-by-sa": "CC-BY-SA-4.0",
-    "cc-by-nd": "CC-BY-ND-4.0",
-    "cc-by-nc": "CC-BY-NC-4.0",
-    "cc-by-nc-sa": "CC-BY-NC-SA-4.0",
-    "cc-by-nc-nd": "CC-BY-NC-ND-4.0",
+    "by": "CC-BY-4.0",
+    "by-sa": "CC-BY-SA-4.0",
+    "by-nd": "CC-BY-ND-4.0",
+    "by-nc": "CC-BY-NC-4.0",
+    "by-nc-sa": "CC-BY-NC-SA-4.0",
+    "by-nc-nd": "CC-BY-NC-ND-4.0",
     "cc0": "CC0-1.0",
 }
 
 # Loose fallback heuristic for "looks like an SPDX license identifier"
-# (only used when SKETCHFAB_LICENSE_SLUG_TO_SPDX doesn't apply, i.e.
-# --local runs) -- not a real SPDX list lookup, just enough to reject
+# (last resort after _spdx_from_license_url() and
+# SKETCHFAB_LICENSE_SLUG_TO_SPDX both come up empty, i.e. non-CC --local
+# licences) -- not a real SPDX list lookup, just enough to reject
 # obviously-human labels like "CC Attribution" or a "TODO: ..." placeholder.
 _SPDX_LIKE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9]*(?:[.+-][A-Za-z0-9]+)*$")
+
+# creativecommons.org URL -> SPDX id. The SPDX segment names (BY, BY-SA,
+# BY-NC-ND, ...) are literally the same words the CC URL path uses, so
+# this is a general-purpose, Sketchfab-independent derivation -- works for
+# any licence_url that follows the standard CC URL shape, --sketchfab or
+# --local. Primary source for CITATION.cff's `license`, added 2026-09-07
+# (5) after the slug-based approach above was found wrong against real
+# data (see SKETCHFAB_LICENSE_SLUG_TO_SPDX's comment).
+_CC_LICENSE_URL_RE = re.compile(
+    r"creativecommons\.org/licenses/([a-z]+(?:-[a-z]+)*)/(\d+\.\d+)", re.IGNORECASE
+)
+_CC0_URL_RE = re.compile(
+    r"creativecommons\.org/publicdomain/zero/(\d+\.\d+)", re.IGNORECASE
+)
 
 # First 10 characters of an ISO-8601 timestamp, if they look like a date --
 # Sketchfab's publishedAt/createdAt come as full timestamps
@@ -110,6 +131,23 @@ _ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}")
 
 def _looks_like_spdx(value: str) -> bool:
     return bool(_SPDX_LIKE_RE.match(value)) and not value.upper().startswith("TODO")
+
+
+def _spdx_from_license_url(url: str | None) -> str | None:
+    """CC licence URL -> SPDX id, e.g.
+    "http://creativecommons.org/licenses/by/4.0/" -> "CC-BY-4.0",
+    ".../publicdomain/zero/1.0/" -> "CC0-1.0". None for anything that
+    isn't a recognisable creativecommons.org URL (not an error -- plenty
+    of valid licence_url values aren't CC at all)."""
+    if not url:
+        return None
+    zero_match = _CC0_URL_RE.search(url)
+    if zero_match:
+        return f"CC0-{zero_match.group(1)}"
+    match = _CC_LICENSE_URL_RE.search(url)
+    if match:
+        return f"CC-{match.group(1).upper()}-{match.group(2)}"
+    return None
 
 
 def _iso_date(value: str | None) -> str | None:
@@ -264,7 +302,10 @@ def build_citation_cff(info: dict, enrichment: dict) -> dict:
         "authors": [author],
     }
 
-    spdx = SKETCHFAB_LICENSE_SLUG_TO_SPDX.get(enrichment.get("license_slug", ""))
+    spdx = (
+        _spdx_from_license_url(info.get("licence_url"))
+        or SKETCHFAB_LICENSE_SLUG_TO_SPDX.get(enrichment.get("license_slug", ""))
+    )
     if not spdx and _looks_like_spdx(info.get("licence") or ""):
         spdx = info["licence"]
     if spdx:
