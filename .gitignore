@@ -36,3 +36,6 @@ config.local.json
 # second citable fassung, same reasoning as fdo-squirrel-registry's own
 # dist/release/ (PRIMER.md S8 pattern).
 dist/*_release/
+data/*
+PATCH-README.md
+cache*
