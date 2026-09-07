@@ -667,6 +667,51 @@ eines weiteren Gebäudes — rund Faktor 11 kleiner als Donaghmore, um die
 Pipeline schneller iterieren zu können und `-O`/`-r` an einem echten,
 aber kleinen Fall zu prüfen.
 
+### Nachtrag 2026-09-04 (2) — S2–S4 komplett gegen Govan 2 durchgelaufen, `-O` bestätigt fehlerhaft für diese Pipeline
+
+[#nachtrag-2026-09-04-2--s2s4-komplett-gegen-govan-2-durchgelaufen--o-bestätigt-fehlerhaft-für-diese-pipeline](#nachtrag-2026-09-04-2--s2s4-komplett-gegen-govan-2-durchgelaufen--o-bestätigt-fehlerhaft-für-diese-pipeline)
+
+`fetch` → `convert` → `nexus` einmal komplett gegen Govan 2 durchlaufen
+lassen (`--sketchfab` direkt mit der Sketchfab-URL, kein manuelles
+`--title`/`--creator`/`--licence` nötig — die Data API liefert das):
+**2,24s + 31,50s + 7,45s ≈ 41s Gesamtlaufzeit**, alle drei Schritte ohne
+Fehler. `convert` fand dabei nur 2 von 4 Kandidaten-Bilddateien für
+`relink_images()` (`defaultMat_baseColor.jpeg`/`defaultMat_normal.jpeg`
+gematcht, `Render Result`/`Viewer Node` nicht — letztere sind interne
+Blender-Compositor-Knoten ohne Dateipfad, kein Fehler). `nxsbuild` erhielt
+entsprechend nur die Basisfarb-Textur, keine Normal-Map — OBJ/MTL kennt
+kein `map_Bump`-Äquivalent für glTF-Normal-Maps, das ist eine
+Formatgrenze, kein Bug in `_copy_textures_from_raw()` (S3).
+
+**`-O`-Befund bestätigt, nicht nur vermutet:** erster `nexus`-Lauf mit
+`--nxsbuild-original-textures --nxsbuild-ram 8000` lief technisch sauber
+durch (`nxscompress` aber mit `Textures: 0`). `model.nxz` in `nxsview`
+geöffnet: mit „Colors" an komplett schwarz, mit „Colors" aus
+weiß-matt/nur Normalen-Schattierung — in beiden Fällen keine Spur der
+Foto-Textur, nicht nur ein Anzeigeproblem. Zweiter Lauf ohne `-O` (nur
+`--nxsbuild-ram 8000`): `nxscompress` meldet `Textures: 24`, `nxsview`
+zeigt den Stein korrekt fotorealistisch texturiert, unabhängig vom
+„Colors"-Häkchen. Damit ist bestätigt: `-O` liefert für diese Pipeline
+ein texturloses `.nxz` — nicht verwendbar, da S6 (`bundle`) ein
+in-sich-geschlossenes `.nxz` für den 3DHOP-Viewer braucht. Empfehlung in
+README.md/`step_nexus.py`/`main.py`-Hilfetext entsprechend korrigiert:
+`-O` bleibt als Opt-in-Flag bestehen, ist aber nicht mehr als
+Standardempfehlung für große Modelle dokumentiert; `--nxsbuild-ram`
+allein bleibt der unproblematische Hebel.
+
+Genaue Ursache (warum `-O` beim Komprimieren zu `Textures: 0` führt —
+referenziert `nxsbuild` die Original-Datei extern, statt sie einzubetten,
+und geht diese Referenz beim `nxscompress`-Schritt schlicht verloren, oder
+liegt es an einem Zusammenspiel mit `nxscompress` selbst) ist nicht
+geklärt und für den weiteren Fortschritt auch nicht nötig — Ergebnis reicht
+als Handlungsanweisung.
+
+Damit ist **S4 jetzt auch gegen einen echten Fall mit korrekt sichtbarer
+Textur bestätigt** (Donaghmore-Lauf zuvor lief zwar durch, aber ob die
+Textur ankam, war nicht geprüft). Offen bleibt weiterhin: Determinismus
+über zwei echte Läufe (A2 Punkt 2) und ob die Default-Parameter (`-f`
+Faces pro Patch etc.) für größere Modelle wie Donaghmore sinnvoll sind.
+
 ---
 
 ## Teil D — Offene Punkte

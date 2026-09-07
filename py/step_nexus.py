@@ -12,12 +12,20 @@ nxscompress then reads model.nxs and writes the compressed model.nxz next
 to it. Both are separate binaries from cnr-isti-vclab/nexus, not
 pip-installable -- see README.md External requirements.
 
-Two of nxsbuild's own options are exposed as flags rather than hardcoded,
-since a real run against a large model (Donaghmore church: 1.49M
-vertices, 2.67M faces, 6 textures) can take a long time at defaults:
---nxsbuild-original-textures (-O, "use original textures, no repacking" --
-skips the texture-atlas repacking step) and --nxsbuild-ram (-r, RAM budget
-in MB, nxsbuild's own default is 2000).
+Two of nxsbuild's own options are exposed as flags: --nxsbuild-ram (-r,
+RAM budget in MB, nxsbuild's own default is 2000) and
+--nxsbuild-original-textures (-O, "use original textures, no repacking").
+
+CAUTION on -O, confirmed against a real run (Govan 2, 2026-09-04): with
+-O, nxscompress reports "Textures: 0" and the resulting .nxz has no
+texture at all in nxsview (checked with Colors both on and off -- not a
+display toggle issue, the texture data is simply absent from the
+compressed output). Without -O, nxscompress reports "Textures: 24" and
+the texture renders correctly. Since S6 (bundle) needs a self-contained
+.nxz for the 3DHOP viewer, -O is not actually usable for this pipeline's
+purpose despite being faster -- kept as an opt-in flag (e.g. for
+inspecting geometry-only .nxs during development), not a recommended
+default. --nxsbuild-ram alone is the safe lever for large models.
 
 Requires local nxsbuild/nxscompress binaries. Not verified against real
 binaries in this chat's sandbox (neither is available there, and building
@@ -115,7 +123,8 @@ if __name__ == "__main__":
     ap.add_argument("--nxsbuild-bin", default=os.environ.get("NXSBUILD_BIN", "nxsbuild"))
     ap.add_argument("--nxscompress-bin", default=os.environ.get("NXSCOMPRESS_BIN", "nxscompress"))
     ap.add_argument("--nxsbuild-original-textures", action="store_true",
-                     help="Pass -O to nxsbuild: use original textures, skip atlas repacking (faster).")
+                     help="Pass -O to nxsbuild: use original textures, skip atlas repacking. "
+                          "CAUTION: confirmed to produce a texture-less .nxz, see module docstring.")
     ap.add_argument("--nxsbuild-ram", type=int, default=None, metavar="MB",
                      help="Pass -r <MB> to nxsbuild (its own default: 2000).")
     ok, message = run(ap.parse_args())

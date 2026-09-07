@@ -97,7 +97,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
     ap.add_argument("--nxscompress-bin", default=os.environ.get("NXSCOMPRESS_BIN", "nxscompress"),
                      help="nxscompress executable (nexus step; default: env NXSCOMPRESS_BIN or 'nxscompress').")
     ap.add_argument("--nxsbuild-original-textures", action="store_true",
-                     help="nxsbuild -O: use original textures, skip atlas repacking -- faster on large models (nexus step).")
+                     help="nxsbuild -O: use original textures, skip atlas repacking. CAUTION: confirmed "
+                          "against a real run to produce a texture-less .nxz (nxscompress reports "
+                          "'Textures: 0') -- not recommended, kept as an opt-in escape hatch (nexus step).")
     ap.add_argument("--nxsbuild-ram", type=int, default=None, metavar="MB",
                      help="nxsbuild -r <MB>: RAM budget, nxsbuild's own default is 2000 (nexus step).")
     return ap

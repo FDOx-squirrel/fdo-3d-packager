@@ -91,15 +91,20 @@ Once `convert` has run, `nexus` picks up `dist/<slug>/model.obj` automatically:
 ```cmd
 python main.py --only nexus
 python main.py --only nexus --nxsbuild-bin "C:\nexus\nxsbuild.exe" --nxscompress-bin "C:\nexus\nxscompress.exe"
-python main.py --only nexus --nxsbuild-original-textures --nxsbuild-ram 8000
+python main.py --only nexus --nxsbuild-ram 8000
 ```
 
 `--nxsbuild-bin`/`--nxscompress-bin` default to `nxsbuild`/`nxscompress` on
 PATH, overridable via the `NXSBUILD_BIN`/`NXSCOMPRESS_BIN` environment
-variables too. `--nxsbuild-original-textures` (`-O`, skip texture-atlas
-repacking) and `--nxsbuild-ram <MB>` (`-r`, RAM budget, nxsbuild's own
-default is 2000) are passed straight through to `nxsbuild` -- useful on
-large models, where the default run can take a long time.
+variables too. `--nxsbuild-ram <MB>` (`-r`, RAM budget, nxsbuild's own
+default is 2000) is passed straight through to `nxsbuild` -- useful on
+large models. `--nxsbuild-original-textures` (`-O`, skip texture-atlas
+repacking) also exists but is **not recommended**: confirmed against a
+real run (Govan 2, 2026-09-04) to produce a texture-less `.nxz`
+(`nxscompress` reports `Textures: 0`, `nxsview` shows no texture with
+Colors either on or off) -- since `bundle` (S6) needs a self-contained
+`.nxz` for the 3DHOP viewer, this isn't usable here despite being faster.
+Kept as an opt-in flag, not a default.
 
 ## External requirements (not pip-installable)
 
