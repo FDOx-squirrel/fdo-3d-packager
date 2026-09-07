@@ -9,6 +9,7 @@
     python main.py --strict            warnings become errors (this is what CI runs)
     python main.py --only fetch --sketchfab "https://sketchfab.com/3d-models/..."
     python main.py --only fetch --local ./scans/rathealy_kiriengine.glb --title "..." --creator "..." --licence "..."
+    python main.py --only mdcff --publisher-label "LEIZA" --publisher-id "https://ror.org/03yrm5c26"
 
 See PRIMER.md for what each step does and why. Steps are implemented one
 module per step under py/, each independently runnable
@@ -102,6 +103,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
                           "'Textures: 0') -- not recommended, kept as an opt-in escape hatch (nexus step).")
     ap.add_argument("--nxsbuild-ram", type=int, default=None, metavar="MB",
                      help="nxsbuild -r <MB>: RAM budget, nxsbuild's own default is 2000 (nexus step).")
+
+    # Publisher for MD.cff (mdcff step, S5). No default (PRIMER.md A4,
+    # confirmed in S5) -- always pass explicitly.
+    ap.add_argument("--publisher-label",
+                     help="MD.cff publishers[0].label. Required for mdcff, no default (mdcff step).")
+    ap.add_argument("--publisher-id",
+                     help="MD.cff publishers[0].id, e.g. a ROR URL. Optional (mdcff step).")
     return ap
 
 

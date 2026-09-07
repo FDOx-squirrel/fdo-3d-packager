@@ -11,6 +11,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+import yaml
+
 # No datetime.now() anywhere in this repo's generators (PRIMER.md A3). Bump
 # this by hand when the pipeline output is meant to change.
 RELEASE = "0.1.0"
@@ -38,6 +40,21 @@ def write_json(data: Any, path: Path) -> None:
 
 def read_json(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def write_yaml(data: Any, path: Path) -> None:
+    """Deterministic YAML for MD.cff/CITATION.cff (mdcff step, S5):
+    insertion order preserved (sort_keys=False -- callers build dicts in the
+    order they want to see on disk, matching each schema's own property
+    order rather than alphabetical), block style, no line wrapping surprises
+    on long URLs (width=1000), trailing newline. No datetime.now() involved
+    here or in any caller (PRIMER.md A3)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    text = yaml.safe_dump(
+        data, sort_keys=False, allow_unicode=True,
+        default_flow_style=False, width=1000,
+    )
+    path.write_text(text, encoding="utf-8")
 
 
 def load_source_info() -> dict:

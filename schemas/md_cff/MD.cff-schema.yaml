@@ -1,0 +1,320 @@
+# Vendored copy -- do not edit by hand.
+#
+# Source: https://github.com/FDOx-squirrel/fdo-squirrel/blob/master/schemas/md_cff/MD.cff-schema.yaml
+# Pinned at commit 504b7af57423586920fc4cf5c56334fe6829beb5 (2026-09-04).
+# fdo-3d-packager validates offline against this copy (PRIMER.md A3: mdcff
+# stays network-free) instead of live-fetching it, per the same "reuse means
+# copying" rule as PRIMER.md A3 -- see PRIMER.md S5 for when/why this was
+# vendored and how to refresh it if fdo-squirrel's schema changes upstream.
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://w3id.org/n4o/fdo/md-cff/schema/0.1"
+title: "MD.cff Schema"
+description: "Single-file specification for MD.cff (Metadata for FDO crosswalk), version 0.1"
+type: object
+additionalProperties: false
+
+required:
+  - md_cff_version
+  - fdo_type
+  - id
+  - title
+  - description
+  - publishers
+
+properties:
+  md_cff_version:
+    type: string
+    const: "0.1"
+    description: "MD.cff schema version (this spec)."
+
+  fdo_type:
+    type: string
+    description: "Target FDO class."
+    enum:
+      - "fdo:SoftwareFDO"
+      - "fdo:AnalysisFDO"
+      - "fdo:3DDataFDO"
+      - "fdo:RegistryFDO"
+
+  id:
+    type: string
+    description: "Global identifier for the described resource (prefer DOI/ARK/Handle/URL)."
+    minLength: 3
+
+  title:
+    type: string
+    minLength: 1
+
+  description:
+    type: string
+    minLength: 1
+    description: "Human-readable description of the described object."
+
+  version:
+    type: string
+    description: "Human-readable version of the described object (not schema version)."
+
+  date_created:
+    type: string
+    description: "Creation date (ISO 8601, YYYY-MM-DD)."
+    pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+
+  date_released:
+    type: string
+    description: "Release/publication date (ISO 8601, YYYY-MM-DD)."
+    pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+
+  date_modified:
+    type: array
+    description: "Modification dates (ISO 8601, YYYY-MM-DD)."
+    items:
+      type: string
+      pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+
+  funding:
+    type: array
+    description: "Funding statements or references."
+    items:
+      type: string
+      minLength: 1
+
+  keywords:
+    type: array
+    description: "Keywords as {label,id?}. label is required; id is optional (URI recommended)."
+    items:
+      $ref: "#/$defs/idLabelEntityOptionalId"
+
+  license:
+    description: "License as {label,id?}. label required; id optional (URI recommended, e.g., SPDX URL)."
+    $ref: "#/$defs/idLabelEntityOptionalId"
+
+  publishers:
+    type: array
+    description: "Publishing agents as list of {label,id?}."
+    items:
+      $ref: "#/$defs/idLabelEntityOptionalId"
+    minItems: 1
+
+  creators:
+    type: array
+    items:
+      $ref: "#/$defs/idLabelEntityOptionalId"
+    description: "Primary creators/authors (use {label,id?})."
+
+  contributors:
+    type: array
+    items:
+      $ref: "#/$defs/idLabelEntityOptionalId"
+    description: "Contributors (use {label,id?})."
+
+  identifiers:
+    type: array
+    items:
+      $ref: "#/$defs/typedIdentifier"
+    description: "Additional identifiers (e.g., DOI, URL, GitHub, ORCID)."
+
+  related_resources:
+    type: array
+    items:
+      $ref: "#/$defs/relatedResource"
+    description: "Links to related objects (papers, datasets, repos, etc.)."
+
+  distributions:
+    type: array
+    items:
+      $ref: "#/$defs/distribution"
+    description: "Optional distributions (files, downloads)."
+
+  spatial:
+    $ref: "#/$defs/spatialExtent"
+    description: "Optional spatial extent (label/id plus geometry/bbox)."
+
+  temporal:
+    $ref: "#/$defs/temporalExtent"
+    description: "Optional temporal extent (label/id plus start/end)."
+
+  heritage_object:
+    $ref: "#/$defs/heritageObject"
+    description: "Optional heritage-object specific metadata."
+
+  technique:
+    $ref: "#/$defs/technique"
+    description: "Optional technique metadata (3D acquisition/processing and/or software specifics)."
+
+$defs:
+  idLabelEntityOptionalId:
+    type: object
+    additionalProperties: false
+    required: [label]
+    properties:
+      id:
+        type: string
+        minLength: 1
+        description: "Resolvable identifier (URI/DOI/ORCID/ROR/etc.). Optional."
+      label:
+        type: string
+        minLength: 1
+        description: "Human-readable label."
+
+  typedIdentifier:
+    type: object
+    additionalProperties: false
+    required: [scheme, value]
+    properties:
+      scheme:
+        type: string
+        enum: [doi, url, orcid, ror, handle, ark, isbn, issn, swhid, other]
+      value:
+        type: string
+        minLength: 1
+      label:
+        type: string
+
+  relatedResource:
+    type: object
+    additionalProperties: false
+    required: [relation, target]
+    properties:
+      relation:
+        type: string
+        enum:
+          - "isSupplementTo"
+          - "isReferencedBy"
+          - "references"
+          - "isPartOf"
+          - "hasPart"
+          - "isDerivedFrom"
+          - "isDocumentedBy"
+      target:
+        $ref: "#/$defs/idLabelEntityOptionalId"
+      note:
+        type: string
+
+  distribution:
+    type: object
+    additionalProperties: false
+    required: [id, label]
+    properties:
+      id:
+        type: string
+        minLength: 1
+      label:
+        type: string
+        minLength: 1
+      media_type:
+        type: string
+      checksum:
+        type: object
+        additionalProperties: false
+        required: [algorithm, value]
+        properties:
+          algorithm:
+            type: string
+            enum: [md5, sha1, sha256, sha512]
+          value:
+            type: string
+            minLength: 1
+
+  spatialExtent:
+    type: object
+    additionalProperties: false
+    required: [label]
+    properties:
+      label:
+        type: string
+        minLength: 1
+      id:
+        type: string
+        minLength: 1
+        description: "Optional spatial identifier (URI)."
+      wkt:
+        type: string
+        minLength: 1
+        description: "WKT geometry in EPSG:4326 (without CRS prefix; CRS prefix is added in RDF)."
+      bounding_box:
+        type: string
+        description: "DCAT bbox literal: 'west,south,east,north' (WGS84)."
+        pattern: '^-?\d+(\.\d+)?,-?\d+(\.\d+)?,-?\d+(\.\d+)?,-?\d+(\.\d+)?$'
+      lon:
+        type: number
+      lat:
+        type: number
+
+  temporalExtent:
+    type: object
+    additionalProperties: false
+    required: [label]
+    properties:
+      label:
+        type: string
+        minLength: 1
+      id:
+        type: string
+        minLength: 1
+        description: "Optional temporal identifier (URI)."
+      start:
+        type: integer
+      end:
+        type: integer
+      range:
+        type: array
+        minItems: 2
+        maxItems: 2
+        items:
+          type: integer
+
+  heritageObject:
+    type: object
+    additionalProperties: false
+    properties:
+      object_type:
+        $ref: "#/$defs/idLabelEntityOptionalId"
+      monument:
+        $ref: "#/$defs/idLabelEntityOptionalId"
+      material:
+        $ref: "#/$defs/idLabelEntityOptionalId"
+      context:
+        type: string
+      documentation_purpose:
+        type: string
+      overall_condition:
+        type: string
+      conservation_urgency:
+        type: string
+
+  technique:
+    type: object
+    additionalProperties: false
+    properties:
+      acquisition:
+        type: object
+        additionalProperties: false
+        properties:
+          method:
+            type: string
+          hardware:
+            type: string
+          images_count:
+            type: string
+      processing:
+        oneOf:
+          - type: string
+            minLength: 1
+          - type: object
+            additionalProperties: true
+      programming_languages:
+        type: array
+        items:
+          type: string
+          minLength: 1
+      repository:
+        type: object
+        additionalProperties: false
+        properties:
+          type:
+            type: string
+          url:
+            type: string
+            minLength: 1
+          development_status:
+            type: string

@@ -4,13 +4,15 @@ Packages a 3D model -- fetched from Sketchfab or supplied as a local file --
 into a FAIR Digital Object (`fdo:3DDataFDO`) ready for ingest by
 [`fdo-squirrel`](https://github.com/FDOx-squirrel/fdo-squirrel).
 
-**Status: S4 done.** `fetch` (`--sketchfab`/`--local` -> `data/raw/<slug>/`
+**Status: S5 done.** `fetch` (`--sketchfab`/`--local` -> `data/raw/<slug>/`
 + `source_info.json`, including sibling files like `scene.bin`/`textures/`),
 `convert` (Blender headless -> `dist/<slug>/model.obj` + `textures/` +
-`preview.png`) and `nexus` (`nxsbuild`/`nxscompress` -> `dist/<slug>/model.nxs`
-+ `model.nxz`) are implemented. `mdcff`/`bundle`/`build_fdo` are still S1
-stubs. See [`PRIMER.md`](PRIMER.md) for the full plan, the decisions behind
-it, and what each step will actually do.
+`preview.png`), `nexus` (`nxsbuild`/`nxscompress` -> `dist/<slug>/model.nxs`
++ `model.nxz`) and `mdcff` (`MD.cff` + `CITATION.cff`, validated against a
+vendored copy of `fdo-squirrel`'s `MD.cff-schema.yaml`) are implemented.
+`bundle`/`build_fdo` are still S1 stubs. See [`PRIMER.md`](PRIMER.md) for
+the full plan, the decisions behind it, and what each step will actually
+do.
 
 ## Repository structure
 
@@ -23,6 +25,8 @@ fdo-3d-packager/
 ├── requirements.txt
 ├── .gitignore
 ├── main.py                 orchestrator -- the only entry point
+├── schemas/md_cff/
+│   └── MD.cff-schema.yaml   vendored copy of fdo-squirrel's schema (mdcff step, S5)
 ├── py/
 │   ├── fdo_3d_packager_utils.py   RELEASE, paths, canonical writers, fingerprints
 │   ├── step_fetch.py               S2: --sketchfab/--local -> data/raw/<slug>/
@@ -38,7 +42,7 @@ fdo-3d-packager/
 │                            (S2/S3/S4/S5 handoff, see step_fetch.py) at data/raw/
 │                            top level, sketchfab_meta.json (audit, --sketchfab only)
 └── dist/                    products: dist/<slug>/model.obj+textures/+preview.png+
-                             model.nxs+model.nxz, later MD.cff, the bundle ZIP
+                             model.nxs+model.nxz+MD.cff+CITATION.cff, later the bundle ZIP
 ```
 
 ## How to run
@@ -105,6 +109,27 @@ real run (Govan 2, 2026-09-04) to produce a texture-less `.nxz`
 Colors either on or off) -- since `bundle` (S6) needs a self-contained
 `.nxz` for the 3DHOP viewer, this isn't usable here despite being faster.
 Kept as an opt-in flag, not a default.
+
+Once `nexus` has run, `mdcff` picks up `data/raw/source_info.json` and
+`dist/<slug>/model.nx*` automatically -- it just needs a publisher, which
+has no default (there is no sensible one to guess):
+
+```cmd
+python main.py --only mdcff --publisher-label "LEIZA - Leibniz-Zentrum fuer Archaeologie" --publisher-id "https://ror.org/03yrm5c26"
+```
+
+`--publisher-label` is required; `--publisher-id` (e.g. a ROR URL) is
+optional. Missing `dist/<slug>/model.obj`/`model.nxs`/`model.nxz` (i.e.
+`convert`/`nexus` haven't run yet) or a missing `--publisher-label` both
+fail the step outright. `MD.cff`'s `id` field is always a fixed
+`"TODO: ..."` placeholder -- this repo never assigns a PID, see
+`PRIMER.md` A4 -- fill in the real DOI by hand after a Zenodo upload. If
+`source_info.json` still has unresolved `title`/`creator`/`licence`
+placeholders from `fetch`, `mdcff` still writes the files but prints a
+`Warning: ...` (exit 0); add `--strict` to fail on that instead.
+`description` is auto-generated from title/creator when `fetch` didn't
+supply one (this happens for every `--local` run, since it has no
+`--description` flag).
 
 ## External requirements (not pip-installable)
 

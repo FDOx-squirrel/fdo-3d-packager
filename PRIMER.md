@@ -47,6 +47,12 @@ Beginn jedes Chats vollständig hochgeladen und am Ende zurückgeschrieben.
   „intentionally omitted in v0.1 schema" bezeichnet. Nicht unser Problem zu
   lösen — wir richten uns nach `MD.cff-schema.yaml` als Quelle der Wahrheit,
   nicht nach dem reicheren Root-Beispiel, bis das upstream geklärt ist.
+  **Korrektur 2026-09-07:** falsch verstanden — der Kommentar in
+  `example_fdo/MD.cff` ist selbst veraltet, `MD.cff-schema.yaml` unterstützt
+  `spatial`/`temporal`/`heritage_object`/`technique` inzwischen offiziell als
+  optionale Felder, und das Root-`MD.cff` ist das Beispiel, das zum
+  aktuellen Schema passt, nicht `example_fdo/MD.cff`. Kein Drift, kein
+  Handlungsbedarf — siehe A4 und S5.
 - `distributions[]` ist im Schema vorgesehen (`path`, `media_type`, `role`,
   `sha256`, `byte_size`), wird im Referenzbeispiel aber **nicht** von Hand
   befüllt — offen, ob `fdo-squirrel` sie selbst aus der Klassifikation
@@ -168,6 +174,15 @@ Eigenschaften, an denen sich ein Lauf messen lässt:
 | `source_info.json`-Vertrag (S2→S3/S4/S5) | eine Datei, von `fetch` geschrieben: `slug`, `model_file` (Pfad **relativ zu `data/raw/`**, kann ein Unterverzeichnis enthalten — z. B. `donaghmore-church-ruin/donaghmore-church-ruin.gltf`, korrigiert 2026-09-04, siehe S2-Nachtrag), `title`/`description`/`creator`/`creator_profile`/`licence`/`licence_url`/`source_url`/`sketchfab_uid`/`source_note`, plus `todo_placeholders` (Liste fehlender Pflichtfelder). Bei `--local` ohne `--title`/`--creator`/`--licence` werden `"TODO: … not set"`-Platzhalter geschrieben und `fetch` gibt eine mit `Warning:` beginnende Meldung zurück — nicht fatal im Normallauf, aber `--strict` (= CI) schlägt fehl, bis die Felder gesetzt sind. Dieselbe `Warning:`-Mechanik greift jetzt auch, wenn vom Modell referenzierte Begleitdateien (`scene.bin`, `textures/…`, `.mtl`) fehlen. `mdcff` (S5) soll den Bau verweigern, solange `todo_placeholders` nicht leer ist (Vorschlag, in S5 zu bestätigen) | 2026-09-04, korrigiert 2026-09-04 |
 | Begleitdateien eines Modells (`scene.bin`, `textures/…` bei `.gltf`; `.mtl`+Texturen bei `.obj`) | werden von `fetch` erkannt (`resolve_sibling_files()`) und unter denselben relativen Pfaden neben das Modell nach `data/raw/<slug>/` kopiert, statt nur die eine Modell-Datei zu kopieren — sonst bricht Blender (S3) an der relativen URI-Auflösung ab. `.glb` hat keine externen Begleitdateien (self-contained) | 2026-09-04, Befund aus erstem echten `--sketchfab`-Lauf |
 | Verhältnis zum künftigen Software-FDO-Packager (Git-Link → `fdo:SoftwareFDO`) | eigenes Repo (`fdo-software-packager`?), nicht dasselbe wie hier — `fetch`+`convert` sind fachlich verschieden (Sketchfab/Blender/Nexus vs. Git-Clone+Repo-Analyse), und A3 verlangt ohnehin Kopieren statt Referenzieren, ein gemeinsames Repo spart also keine Duplizierung, nur Übersicht. Was kopiert werden sollte, sobald das Schwester-Repo startet: MD.cff/CITATION.cff-Writer, Bundle-Layout, `build_fdo`-Schritt (S5–S7) | 2026-09-03, Vorschlag |
+| `MD.cff-schema.yaml` in diesem Repo | vendorte Kopie unter `schemas/md_cff/MD.cff-schema.yaml` (Stand `fdo-squirrel@504b7af5`, 2026-09-04), nicht live von `raw.githubusercontent.com` geladen — `mdcff` bleibt damit netzwerkfrei (A3). Von Hand aktualisieren, wenn sich das Schema upstream ändert; Datei trägt einen Header-Kommentar mit Quelle/Pin | 2026-09-07 |
+| Schema-Drift-Befund (A1, 2026-09-03) war ein Fehlalarm | `example_fdo/MD.cff` trägt einen veralteten Kommentar ("spatial/temporal/… intentionally omitted in v0.1"), der nicht mehr zum aktuellen `MD.cff-schema.yaml` passt — das Schema unterstützt `spatial`/`temporal`/`heritage_object`/`technique` inzwischen offiziell als optionale Felder, und das Root-`MD.cff` (nicht `example_fdo/MD.cff`) ist das Beispiel, das zum Schema passt. Kein Handlungsbedarf für uns, aber A1s alter Befund war missverständlich | 2026-09-07, Korrektur |
+| `description` fehlt bei `--local` (kein CLI-Flag) bzw. manchmal bei `--sketchfab` | kein neues `--description`-Flag in `fetch` — `mdcff` erzeugt einen deterministischen Fallback-Satz aus `title`/`creator`, keine Warnung dafür (Chat-Entscheidung 2026-09-07, siehe S5) | 2026-09-07 |
+| `publishers` (Pflichtfeld in MD.cff) | kein Default (auch nicht LEIZA) — `--publisher-label` ist für `mdcff` Pflicht, fehlt es, bricht der Schritt hart ab (nicht nur Warning/--strict) (Chat-Entscheidung 2026-09-07, siehe S5) | 2026-09-07 |
+| `source_info.json`'s `todo_placeholders` blockieren `mdcff`? | Vorschlag aus 2026-09-04 bestätigt als **Nein** — nur `Warning:`-Nachricht wie bei `fetch`, harter Abbruch erst mit `--strict` (Chat-Entscheidung 2026-09-07, siehe S5) | 2026-09-07, bestätigt (widerruft den Vorschlag von 2026-09-04) |
+| `MD.cff.id`-Platzhalter beim `--strict`-Mechanismus | bewusst **außerhalb** der Warning/--strict-Logik oben — die Zeile "PID wird von diesem Repo nicht vergeben" (2026-09-03) ist ein Dauerzustand, kein vor Release behebbares TODO, ein `--strict`-CI-Lauf darf daran nie scheitern | 2026-09-07 |
+| `keywords` in MD.cff | fixer Default (3D data / Cultural Heritage, dieselben Wikidata-IDs wie `fdo-squirrel`s Root-`MD.cff`), nicht CLI-konfigurierbar — dieses Repo packt immer dieselbe Domäne | 2026-09-07 |
+| CITATION.cff `authors`-Format | CFF-*entity* (`{name, website}`), nicht *person* (`{given-names, family-names}`) — `creator` ist ein beliebiger Anzeigename (Sketchfab-Username o.ä.), der sich nicht zuverlässig splitten lässt | 2026-09-07 |
+| CITATION.cff `license`-Feld | nur gesetzt, wenn `licence` wie eine SPDX-ID aussieht (Heuristik, kein echter SPDX-Abgleich) — Sketchfabs `licence`-Wert ist oft ein menschenlesbares Label ("CC Attribution") statt einer SPDX-ID, CFFs `license`-Feld verlangt aber SPDX | 2026-09-07 |
 
 ### A5 Was in welchem Chat hochgeladen wird
 
@@ -198,14 +213,18 @@ Nicht anwendbar in S1 — dieses Repo veröffentlicht selbst keine RDF-IRIs
 | S2 | `fetch`-Schritt: `--sketchfab`/`--local` → `data/raw/` (aus dem Prototyp migriert) | fdo-3d-packager | S1 | erledigt 2026-09-04 |
 | S3 | `convert`-Schritt: Blender → `dist/<slug>/model.obj` + `preview.png` | fdo-3d-packager | S2 | erledigt 2026-09-04 |
 | S4 | `nexus`-Schritt: `nxsbuild`/`nxscompress` → `dist/model.nxs`/`.nxz` | fdo-3d-packager | S3 | erledigt 2026-09-04 |
-| S5 | `mdcff`-Schritt: `MD.cff` + `CITATION.cff` schreiben, gegen Schema validieren | fdo-3d-packager | S2, S4 | offen |
+| S5 | `mdcff`-Schritt: `MD.cff` + `CITATION.cff` schreiben, gegen Schema validieren | fdo-3d-packager | S2, S4 | erledigt 2026-09-07 |
 | S6 | `bundle`-Schritt: `dist/<slug>.zip` im `fdo-squirrel`-Layout | fdo-3d-packager | S3, S4, S5 | offen |
 | S7 | `dist/<slug>.zip` durch `fdo-squirrel` schicken, `fdo-metadata.ttl` als Beleg (Muster: registry S8) | fdo-3d-packager | S6 | offen |
 
 S3 und S4 sind technisch unabhängig von S5 und können in beliebiger
-Reihenfolge bzw. parallel in Angriff genommen werden; S5 braucht sowohl die
-deskriptiven Metadaten aus S2 (Titel/Creator/Lizenz) als auch die Checksums
-aus S4, ist also sinnvollerweise der letzte Implementierungsschritt vor S6.
+Reihenfolge bzw. parallel in Angriff genommen werden; S5 braucht die
+deskriptiven Metadaten aus S2 (Titel/Creator/Lizenz) und prüft, dass S4
+durchgelaufen ist (Vollständigkeits-Gate: `model.obj`/`model.nxs`/
+`model.nxz` müssen existieren), liest dessen Checksums aber **nicht** in
+MD.cff ein -- Korrektur 2026-09-07, siehe S5: A4 hatte `distributions[]`
+schon am 2026-09-03 als "nicht vorbefüllen" entschieden, dieser Satz hier
+war seitdem nicht mehr konsistent damit.
 
 ---
 
@@ -714,6 +733,86 @@ Faces pro Patch etc.) für größere Modelle wie Donaghmore sinnvoll sind.
 
 ---
 
+## S5 — `mdcff`
+
+[#s5--mdcff](#s5--mdcff)
+
+**Ziel:** `data/raw/source_info.json` (S2) + Vollständigkeits-Check gegen
+S4s Outputs → `dist/<slug>/MD.cff` + `dist/<slug>/CITATION.cff`, MD.cff
+offline gegen die vendorte Kopie von `MD.cff-schema.yaml` validiert.
+
+**Substanz:**
+
+- `schemas/md_cff/MD.cff-schema.yaml`: vendorte Kopie aus `fdo-squirrel`
+  (Pin `504b7af5`, 2026-09-04, siehe A4) statt Live-Fetch — `mdcff` bleibt
+  damit netzwerkfrei wie A3 verlangt.
+- `py/fdo_3d_packager_utils.py`: neuer `write_yaml()`-Helper (analog
+  `write_json()` — Insertion-Order statt alphabetisch, damit die
+  Schlüsselreihenfolge im geschriebenen `MD.cff`/`CITATION.cff` der
+  Schema-Reihenfolge folgt statt zufällig zu sortieren; kein
+  `datetime.now()` beteiligt).
+- `py/step_mdcff.py`: baut `MD.cff` aus `source_info.json` (Titel/Creator/
+  Lizenz/Source-URL) + `--publisher-label`/`--publisher-id` (neue
+  CLI-Flags, auch in `main.py`s globalem Parser). `distributions[]` bleibt
+  wie beschlossen leer (A4, 2026-09-03) — stattdessen prüft der Schritt nur,
+  dass `dist/<slug>/model.obj`/`model.nxs`/`model.nxz` existieren, sonst
+  Abbruch mit Hinweis auf `convert`/`nexus`.
+- Alle sechs in diesem Chat als Form beantworteten bzw. daraus folgenden
+  Entscheidungen (`description`-Fallback, `publishers` ohne Default,
+  `todo_placeholders`-Warning bestätigt, `id`-Platzhalter außerhalb der
+  Warning-Logik, feste `keywords`, CITATION.cff-`authors` als Entity,
+  CITATION.cff-`license`-Heuristik) stehen mit Datum in A4 und ausführlicher
+  im Docstring von `step_mdcff.py` selbst.
+
+### Erledigt 2026-09-07
+
+[#erledigt-2026-09-07](#erledigt-2026-09-07)
+
+Implementiert und gegen zwei Fake-`source_info.json` (Sketchfab-artig mit
+`source_url`/`creator_profile`, wie "Govan 2"; `--local`-artig ohne beides,
+wie "Rathealy Standing Stone") plus leeren `model.obj`/`model.nxs`/
+`model.nxz`-Dateien (Blender/Nexus sind im Sandkasten weiterhin nicht
+verfügbar, aber `mdcff` selbst ist reines Python/YAML/JSON-Schema und
+braucht sie nicht) laufen lassen:
+
+- `python main.py --only mdcff --publisher-label ... --publisher-id ...`
+  läuft für beide Fälle grün durch, `MD.cff` validiert **nicht nur gegen
+  unsere eigene vendorte Schema-Kopie, sondern auch gegen `fdo-squirrel`s
+  echten `ingest.metadata_ingest.validate_against_schema()`** (dessen Repo
+  für diesen Test zusätzlich geklont und direkt aufgerufen — kein Mock).
+  Das ist mehr, als S5 laut Abnahme verlangt (der volle Rundlauf ist S7),
+  aber ein starker Beleg dafür, dass die vendorte Kopie wirklich Byte für
+  Byte dem Original entspricht (per `diff` bestätigt) und unser
+  MD.cff-Writer wirklich schema-konform schreibt, nicht nur laut eigenem
+  Validator.
+- `python main.py --only mdcff` ohne `--publisher-label` bricht hart ab
+  (exit 1), ohne vorhandene `dist/<slug>/model.nx*` ebenso — beides wie in
+  A4 entschieden.
+- `todo_placeholders` in `source_info.json` (Test: `licence` künstlich auf
+  `TODO: licence not set` gesetzt) erzeugt eine `Warning:`-Nachricht, Lauf
+  bleibt exit 0; mit `--strict` schlägt derselbe Lauf fehl. Bestätigt A4s
+  2026-09-04-Vorschlag wie in diesem Chat entschieden.
+- Determinismus: zweimal hintereinander gegen denselben Fake-Zustand
+  gelaufen, `md5sum` von `MD.cff`/`CITATION.cff` identisch (A2 Punkt 2).
+- `--local`-Fall (keine `description`, keine `source_url`, keine
+  `creator_profile`) erzeugt den Fallback-Beschreibungssatz, lässt
+  `related_resources` komplett weg (kein leeres Array geschrieben) und
+  lässt `website`/`url` in CITATION.cff weg — alles wie vorgesehen.
+  `licence: "CC-BY-4.0"` landet in CITATION.cff `license`, das
+  Sketchfab-artige `licence: "CC Attribution"` (mit Leerzeichen) dagegen
+  nicht (SPDX-Heuristik greift korrekt in beide Richtungen).
+- `--list`/`--dry-run` bleiben unverändert leichtgewichtig (keine
+  `yaml`/`jsonschema`-Importe ohne echten Schritt-Aufruf, lazy Import wie
+  bisher).
+
+**Nicht geprüft:** der volle Rundlauf `dist/<slug>.zip` durch eine
+`fdo-squirrel`-Instanz inklusive Klassifikation (das ist S7); ob
+`nxsbuild`/`nxscompress` wirklich `model.nx*` liefern, die zu den hier
+generierten `MD.cff` passen (S4 lief hier nicht real mit, nur leere
+Platzhalterdateien als Existenz-Marker für das Vollständigkeits-Gate).
+
+---
+
 ## Teil D — Offene Punkte
 
 - **Schwester-Repo für Software-FDOs.** Angekündigt 2026-09-03: ein Repo,
@@ -749,6 +848,23 @@ Faces pro Patch etc.) für größere Modelle wie Donaghmore sinnvoll sind.
   Sketchfab-Prototyp) zusätzlich zu `MD.cff` führen, oder reicht `MD.cff`
   allein als Quelle der Wahrheit? Tendenz: nur `MD.cff`, um keine zwei
   Wahrheiten zu pflegen — aber nicht entschieden.
-- **Schema-Drift im `fdo-squirrel`-Repo** (Root-`MD.cff` nutzt Felder, die
-  laut `example_fdo/MD.cff` „intentionally omitted" sind) ist kein Punkt für
-  dieses Repo, aber ein Hinweis wert, falls upstream danach gefragt wird.
+- **Schema-Drift im `fdo-squirrel`-Repo** war ein Fehlalarm, siehe A4
+  (2026-09-07, „Schema-Drift-Befund war ein Fehlalarm") — kein offener
+  Punkt mehr, nur zur Erinnerung falls upstream danach gefragt wird.
+- **`spatial`/`temporal`/`heritage_object`/`technique`/`identifiers`/
+  `date_created`/`date_released`/`version`** bleiben in `MD.cff` für S5
+  vorerst ungenutzt (optionale Felder, keine verlässliche Datenquelle aus
+  `source_info.json`). Mögliche spätere Erweiterung: Sketchfabs
+  `publishedAt`/`createdAt` (falls in `sketchfab_meta.json` vorhanden) nach
+  `date_created`/`date_released` übernehmen; `technique.processing` als
+  freier Text für `--source-note` (aktuell nur in `source_info.json`
+  vorhanden, nicht in `MD.cff`).
+- **`identifiers[]` nach Zenodo-Upload:** wenn `id` manuell durch die echte
+  DOI ersetzt wird (siehe `ID_PLACEHOLDER` in `step_mdcff.py`), sollte
+  vermutlich auch ein `identifiers`-Eintrag `{scheme: doi, value: ...}`
+  ergänzt werden (Muster: `example_fdo/MD.cff`) — aktuell manueller
+  Nacharbeitsschritt, nicht automatisiert.
+- **`--publisher-label`/`--publisher-id` sind Singular** (ein Publisher,
+  kein wiederholbares Flag) — reicht für den aktuellen Anwendungsfall
+  (immer LEIZA als Publisher-Aufruf). Falls künftig mehrere Publisher
+  gebraucht werden, Flag-Design dann erweitern.
