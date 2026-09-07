@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +21,13 @@ RELEASE = "0.1.0"
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DATA_RAW = REPO_ROOT / "data" / "raw"
 DIST = REPO_ROOT / "dist"
+
+# Vendored, offline third-party assets (PRIMER.md A3: network access stays
+# confined to `fetch`). Currently just the trimmed 3DHOP viewer the `bundle`
+# step (S6) copies into every dist/<slug>.zip -- see assets/3dhop/NOTICE.md
+# for what was vendored, from where, and why.
+ASSETS = REPO_ROOT / "assets"
+VIEWER_SRC = ASSETS / "3dhop"
 
 # This repo does not publish RDF itself (that is fdo-squirrel's job
 # downstream), so unlike other repos in the family there is no
@@ -55,6 +63,35 @@ def write_yaml(data: Any, path: Path) -> None:
         default_flow_style=False, width=1000,
     )
     path.write_text(text, encoding="utf-8")
+
+
+# zip format's own minimum timestamp. Used as a fixed per-entry date_time
+# for every file `write_deterministic_zip()` writes -- not a meaningful
+# content date (unlike RELEASE), just a placeholder that stops real file
+# mtimes (which vary by OS/checkout/clone and carry no domain meaning here)
+# from leaking into the archive and making two otherwise-identical runs
+# diff (PRIMER.md A3: no clock in output).
+ZIP_FIXED_DATETIME = (1980, 1, 1, 0, 0, 0)
+
+
+def write_deterministic_zip(entries: list[tuple[str, Path]], zip_path: Path) -> None:
+    """Write (arcname, source file) pairs into zip_path deterministically:
+    fixed per-entry timestamp (ZIP_FIXED_DATETIME, see above) and fixed
+    Unix file mode (0o644) instead of whatever the source file happened to
+    have (differs by OS and by how the file was created), so two runs over
+    unchanged inputs produce byte-identical output. `zipfile`'s default
+    compression level (6) is itself deterministic for identical input
+    bytes -- nothing to fix there. Entries are written in the exact order
+    given; callers sort within each logical group themselves (filesystem
+    iteration order isn't guaranteed across platforms, same reasoning as
+    discover_slugs() below)."""
+    zip_path.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        for arcname, source in entries:
+            info = zipfile.ZipInfo(arcname, date_time=ZIP_FIXED_DATETIME)
+            info.compress_type = zipfile.ZIP_DEFLATED
+            info.external_attr = 0o644 << 16
+            zf.writestr(info, source.read_bytes())
 
 
 def discover_slugs() -> list[str]:

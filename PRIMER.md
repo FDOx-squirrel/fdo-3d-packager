@@ -37,6 +37,10 @@ Beginn jedes Chats vollständig hochgeladen und am Ende zurückgeschrieben.
   Bilder/Docs (`.jpg/.png/.tif/.pdf/.csv/.xml/.json`) → Rolle `documentation`;
   Pfadpräfix `textures/` → Rolle `auxiliary`. Für `.html`/`.js`/`.css`
   existiert **keine** Regel — ein 3DHOP-Viewer im Paket würde nicht erfasst.
+  **Ergänzt 2026-09-07 (S6):** dieselbe Lücke betrifft auch `.mtl`
+  (`model.mtl`, Companion-Datei von `model.obj` in `data/model/`) — keine
+  eigene Regel dafür in `classification_rules.yaml`, gleicher offener Punkt
+  wie beim Viewer, siehe Teil D.
 - Referenzbeispiel `example_fdo/` ist buchstäblich unser Anwendungsfall: ein
   irischer Ogham-Stein als `.glb` unter `data/model/`, Bilder unter
   `data/images/`, plus `MD.cff` (`fdo_type: fdo:3DDataFDO`) und
@@ -194,6 +198,10 @@ Eigenschaften, an denen sich ein Lauf messen lässt:
 | Sketchfab-`license.slug`-Zuordnung war falsch | **Korrektur, kein Vorschlag:** `SKETCHFAB_LICENSE_SLUG_TO_SPDX` nutzte erfundene Slugs (`"cc-by"`), die reale API liefert `"by"` (Befund gegen echte Govan-2-Daten, 2026-09-07 im Chat hochgeladen — die vorherige "Verifikation" gegen eine inoffizielle Drittanbieter-Schema-Rekonstruktion war unzureichend). Primärer Mechanismus jetzt `_spdx_from_license_url()`: leitet die SPDX-ID aus der CC-Lizenz-URL her (`creativecommons.org/licenses/by/4.0/` → `CC-BY-4.0`), funktioniert generisch für jede CC-URL, nicht nur Sketchfab-spezifisch, und braucht `sketchfab_meta.json` gar nicht (nutzt `licence_url` aus `source_info.json`). Der (jetzt korrigierte) Slug-Abgleich bleibt als Fallback | 2026-09-07 (5), Korrektur |
 | `model_file`-Pfadtrenner plattformabhängig | Bug: `str(dest.relative_to(DATA_RAW))` liefert unter Windows Backslashes, die unter POSIX (Sandkasten, potenziell CI) als einzelnes komisches Dateinamenszeichen statt als Pfadtrenner interpretiert werden — belegt an echten, in diesem Chat hochgeladenen `source_info.json`-Daten (`"govan-2\\govan-2.gltf"`). Fix: `.as_posix()` statt `str()` beim Schreiben; `DATA_RAW / model_file` liest Forward-Slashes unter Windows genauso korrekt wie unter POSIX, also keine Änderung an lesender Seite nötig | 2026-09-07 (5) |
 | `--all-slugs` bei fehlschlagendem Slug | **Ergänzt/geändert 2026-09-07 (6):** springt jetzt zum nächsten Slug weiter statt den ganzen Lauf abzubrechen (Muster: Batch-Fetch) — Fehler nur, wenn **alle** Slugs fehlschlagen, sonst `Warning:` (blockiert nur `--strict`). Bei genau einem Slug (Normalfall ohne `--all-slugs`) bricht ein Fehler weiterhin sofort ab, da es nichts zum Weiterspringen gibt | 2026-09-07 (6) |
+| 3DHOP-Vendoring: Version/Quelle (`bundle`, S6) | `cnr-isti-vclab/3DHOP` Tag `4.3` (Commit `a8c145d`, 2020-06-18), `minimal/`-Paket unter `assets/3dhop/` vendort — offline (A3), nicht live geladen. Trimm-Begründung und vollständige Dateiliste in `assets/3dhop/NOTICE.md`, nicht hier dupliziert | 2026-09-07 (S6) |
+| 3DHOP-Template (`bundle`, S6) | `3DHOP_no_tools.html` (umbenannt `index.html`), nicht `3DHOP_all_tools.html` — reiner Präsentations-Viewer in einem citable Datenpaket, keine Editier-/Messwerkzeuge nötig | 2026-09-07 (S6) |
+| ZIP-Determinismus (`bundle`, S6) | fixer Pro-Eintrag-Zeitstempel `1980-01-01` (Zip-Format-eigenes Minimum, keine RELEASE-Semantik — reine Container-Metadaten ohne fachliche Bedeutung) plus fixe Unix-Rechte `0o644` statt echter Datei-mtimes/-Rechte, die je nach Checkout/Betriebssystem streuen würden. `write_deterministic_zip()` in `fdo_3d_packager_utils.py`, als kanonischer Writer neben `write_json`/`write_yaml` gedacht — wiederverwendbar für spätere Repos der Familie mit ZIP-Output | 2026-09-07 (S6) |
+| Fehlende Texturen (`bundle`, S6) | kein Fehler, kein `Warning:` — ein unbe-texturiertes Modell (z. B. das Freshford-Low-Poly-Testmodell) ist ein legitimer Fall, `data/textures/` wird einfach weggelassen statt eine falsche Warnung zu erzeugen | 2026-09-07 (S6) |
 | `fetch` + Rundlauf in einem `main.py`-Aufruf | Ja — sobald `fetch` Teil der gewählten Schritte ist (`--from fetch` o. ä.), läuft `fetch` einmalig, danach automatisch der Rest **nur für die gerade neu geholten Slug(s)** (`args.fetched_slugs`, von `step_fetch.py` gesetzt), nicht für alle unter `data/raw/`. `--slug`/`--all-slugs` werden in diesem Fall ignoriert (mit Hinweis auf stderr, kein Fehler) — beide könnten die Frage "welche(r) Slug(s)" ohnehin nicht besser beantworten als `fetch` selbst | 2026-09-07 (6) |
 
 ### A5 Was in welchem Chat hochgeladen wird
@@ -226,7 +234,7 @@ Nicht anwendbar in S1 — dieses Repo veröffentlicht selbst keine RDF-IRIs
 | S3 | `convert`-Schritt: Blender → `dist/<slug>/model.obj` + `preview.png` | fdo-3d-packager | S2 | erledigt 2026-09-04 |
 | S4 | `nexus`-Schritt: `nxsbuild`/`nxscompress` → `dist/model.nxs`/`.nxz` | fdo-3d-packager | S3 | erledigt 2026-09-04 |
 | S5 | `mdcff`-Schritt: `MD.cff` + `CITATION.cff` schreiben, gegen Schema validieren | fdo-3d-packager | S2, S4 | erledigt 2026-09-07 |
-| S6 | `bundle`-Schritt: `dist/<slug>.zip` im `fdo-squirrel`-Layout | fdo-3d-packager | S3, S4, S5 | offen |
+| S6 | `bundle`-Schritt: `dist/<slug>.zip` im `fdo-squirrel`-Layout | fdo-3d-packager | S3, S4, S5 | erledigt 2026-09-07 |
 | S7 | `dist/<slug>.zip` durch `fdo-squirrel` schicken, `fdo-metadata.ttl` als Beleg (Muster: registry S8) | fdo-3d-packager | S6 | offen |
 | S8 | Batch-Fetch (`--sketchfab` wiederholbar) + Multi-Slug-Infrastruktur (`data/raw/<slug>/source_info.json`, `--slug`, `--all-slugs`) | fdo-3d-packager | S2–S5 | erledigt 2026-09-07 |
 
@@ -893,6 +901,111 @@ Produktionscode verifiziert, aber kein echter API-Roundtrip.
 
 ---
 
+## S6 — `bundle`
+
+[#s6--bundle](#s6--bundle)
+
+**Ziel:** `dist/<slug>/` (aus S3–S5: `model.obj`+`model.mtl`+`textures/`+
+`preview.png` aus `convert`, `model.nxs`+`model.nxz` aus `nexus`,
+`MD.cff`+`CITATION.cff` aus `mdcff`) wird zusammen mit einem vendorten
+3DHOP-Miniviewer zu `dist/<slug>.zip` im von `fdo-squirrel` erwarteten
+Layout gepackt — offline, ohne eigene RDF-Erzeugung (das übernimmt S7).
+
+**Uploads für diesen Schritt:** `PRIMER.md` + Repo-Bundle (s. A5).
+
+**Substanz:**
+
+- Ziel-Layout (A2, bestätigt 2026-09-03, jetzt umgesetzt): `MD.cff`/
+  `CITATION.cff` oben, `data/model/` (`.obj`/`.mtl`/`.nxs`/`.nxz`),
+  `data/textures/` (nur wenn in `dist/<slug>/textures/` tatsächlich etwas
+  liegt — ein unbe-texturiertes Modell ist kein Fehler, siehe A4),
+  `data/images/preview.png`, `viewer/` (3DHOP).
+- `py/step_bundle.py`: Vollständigkeits-Gate prüft `MD.cff`, `CITATION.cff`,
+  `model.obj`, `model.nxs`, `model.nxz`, `preview.png` (S3–S5 müssen
+  gelaufen sein); `model.mtl` und `textures/` bleiben absichtlich optional,
+  beide werden nur aufgenommen, wenn sie existieren. Entfernt ein evtl.
+  vorhandenes altes `<slug>.zip` vor jedem Lauf (Idempotenz, Muster S4),
+  schreibt danach neu über `write_deterministic_zip()`.
+- **`write_deterministic_zip()`** (neu in `fdo_3d_packager_utils.py`, als
+  kanonischer Writer neben `write_json`/`write_yaml`): fixer
+  Pro-Eintrag-Zeitstempel `1980-01-01` (Zip-Format-Minimum) und fixe
+  Unix-Rechte `0o644` statt echter Datei-mtimes/-Rechte. Zwei Läufe über
+  unveränderte Eingaben erzeugen dadurch byte-identische ZIPs
+  (`sha256sum`-geprüft, siehe Erledigt-Abschnitt).
+- **3DHOP-Miniviewer, vendort unter `assets/3dhop/`** (neu, kein separates
+  Deliverable, A4 vom 2026-09-03 bestätigt): echtes
+  `cnr-isti-vclab/3DHOP`-Repo geklont (Tag `4.3`), `minimal/
+  3DHOP_no_tools.html` als Basis (nicht `_all_tools`, siehe A4), auf die
+  tatsächlich geladenen Dateien getrimmt (~970 KB statt ~9,8 MB Upstream,
+  größtenteils deren Demo-Modell und fünf ungenutzte Skin-Themes). Einzige
+  inhaltliche Änderung an der HTML: `models/gargo.nxz` →
+  `../data/model/model.nxz` (fixer relativer Pfad, da das Bundle-Layout
+  immer gleich ist — kein Templating nötig, kein Jinja2 für diesen einen
+  Wert). `LICENSE.txt` (GPLv3) wandert mit in jedes `dist/<slug>.zip`
+  (`viewer/LICENSE.txt`) — Lizenzpflicht, kein optionales Extra. Volle
+  Begründung/Trimm-Liste in `assets/3dhop/NOTICE.md`, nicht hier
+  dupliziert.
+- `collect_viewer_files()` kopiert alles unter `assets/3dhop/` außer
+  `NOTICE.md` (unsere eigene Vendoring-Notiz, nicht Teil des Viewers) —
+  kein von Hand gepflegtes Datei-Manifest, das mit dem Ordner
+  auseinanderlaufen könnte.
+- `--slug` ergänzt (Teil-D-Punkt aus S8 jetzt für S6 erledigt), gleiches
+  Muster wie S3–S5.
+
+**Abnahme:** `python main.py --only bundle` schlägt mit klarer Meldung
+fehl, wenn `dist/<slug>/` unvollständig ist (S3–S5 noch nicht gelaufen)
+oder `assets/3dhop/` fehlt/leer ist. Mit vollständigen Eingaben:
+`dist/<slug>.zip` enthält exakt das Ziel-Layout, `model.mtl`/
+`data/textures/` erscheinen nur, wenn sie in `dist/<slug>/` tatsächlich
+vorhanden sind. Zwei aufeinanderfolgende Läufe erzeugen byte-identische
+ZIPs. `python py/step_bundle.py --slug ...` läuft eigenständig.
+
+### Erledigt 2026-09-07
+
+[#erledigt-2026-09-07-3](#erledigt-2026-09-07-3)
+
+Gegen zwei Fixture-`dist/<slug>/`-Bäume verifiziert (kein echter S3/S4-
+Output im Sandkasten verfügbar, siehe S3/S4 selbst) — bewusst zwei sehr
+unterschiedliche Fälle: `govan-2` (mit `model.mtl` + 2 Texturen) und
+`freshford-st-lachtains-well-low-poly` (ohne `textures/`, ohne
+`model.mtl`), um beide Zweige der optionalen Felder wirklich zu prüfen,
+nicht nur den Normalfall. Geprüft: `--only bundle` (Einzelslug und
+`--all-slugs`), Standalone-Aufruf (`python py/step_bundle.py --slug ...`),
+`--dry-run`, `--strict` (bleibt grün, `bundle` erzeugt aktuell nie eine
+`Warning:`), Vollständigkeits-Gate (fehlende S4-Outputs → klarer Fehler,
+Exit 1), fehlender `assets/3dhop/`-Ordner → klarer Fehler statt eines
+kaputten ZIPs. ZIP-Inhalt per `zipfile.ZipFile.infolist()` geprüft: exaktes
+Layout, fixer Zeitstempel `1980-01-01`, fixe Rechte `0o644` bei jedem der
+24 Viewer-Dateien plus den slug-eigenen Dateien. Zwei aufeinanderfolgende
+Läufe über unveränderte Fixtures: `sha256sum`-identische `dist/<slug>.zip`
+für beide Slugs.
+
+**Nicht geprüft (kein Browser im Sandkasten):** ob `viewer/index.html` das
+gepackte `data/model/model.nxz` tatsächlich rendert — nur der eine
+geänderte Pfad wurde per Diff gegen die Upstream-Datei bestätigt, nicht das
+Laufzeitverhalten von SpiderGL/Nexus.js/Corto im Browser. Ebenfalls nicht
+geprüft: der tatsächliche Rundlauf durch `fdo-squirrel` (S7) — insbesondere,
+ob `classification_rules.yaml` `.mtl`/`.html`/`.js`/`.css` ignoriert, mit
+einer Default-Rolle versieht oder abbricht (Teil D).
+
+Nächster sinnvoller Schritt (Flo, auf der echten Windows-Maschine): der
+volle Rundlauf gegen zwei echte, bereits früher erfolgreich gefetchte
+Modelle (Govan 2 — texturiert, Freshford St Lachtain's Well low poly — zum
+Vergleich das kleinere, ggf. unbe-texturierte Modell), diesmal bis
+`bundle`:
+
+```cmd
+python main.py --from fetch --sketchfab "https://sketchfab.com/3d-models/govan-2-b9dc56bfc1d342f6b4da3281e6629c07" --sketchfab "https://sketchfab.com/3d-models/freshford-st-lachtains-well-low-poly-ae1e1f4daa7d433dbbf076407134e81e" --nxsbuild-bin "C:\Nexus_43\nxsbuild.exe" --nxscompress-bin "C:\Nexus_43\nxscompress.exe" --publisher-label "Research Squirrel Engineers Network" --publisher-id "https://github.com/Research-Squirrel-Engineers"
+```
+
+— danach `dist/govan-2.zip`/`dist/freshford-st-lachtains-well-low-poly.zip`
+entpacken, `viewer/index.html` **über einen lokalen Webserver** öffnen
+(nicht `file://` — Web Worker/CORS, 3DHOP braucht `http(s)://`) und prüfen,
+ob sich das jeweilige Modell wirklich dreht/lädt, inklusive Textur bei
+Govan 2.
+
+---
+
 ## S8 — Batch-Fetch & Multi-Slug-Infrastruktur
 
 [#s8--batch-fetch--multi-slug-infrastruktur](#s8--batch-fetch--multi-slug-infrastruktur)
@@ -1233,15 +1346,24 @@ Mehrfach-Lauf) — dieser Lauf hatte 5/5 Erfolge, kein Fehlerfall dabei.
   `--fdo-squirrel-path` CLI-Flag. (b) und (c) vermeiden eine Paketierungs-
   Abhängigkeit von einem Repo, das selbst noch v0.1 ist. Zu klären, sobald
   S7 ansteht.
-- **`classification_rules.yaml`-Lücke für den Viewer, konkret zu prüfen in
-  S7.** Da der Viewer laut A4 mit ins Paket kommt, aber `.html`/`.js`/`.css`
-  keine Rolle in `fdo-squirrel`s `classification_rules.yaml` haben: erster
-  echter Rundlauf zeigt, ob `fdo-squirrel` unklassifizierte Dateien
-  ignoriert, mit einer Default-Rolle versieht oder abbricht. Je nach Befund
-  entweder in `fdo-squirrel` eine `auxiliary`-Regel für `viewer/` ergänzen
-  (Beschluss: dort nachbessern, nicht hier umgehen — siehe A4) oder, falls
-  ein Abbruch droht, den Viewer vorerst unter einem bereits klassifizierten
-  Pfad ablegen (`data/documentation/viewer/`) als Übergangslösung.
+- **`classification_rules.yaml`-Lücke für Viewer und `.mtl`, konkret zu
+  prüfen in S7.** Da der Viewer laut A4 mit ins Paket kommt, aber
+  `.html`/`.js`/`.css` keine Rolle in `fdo-squirrel`s
+  `classification_rules.yaml` haben — und, beim Implementieren von S6
+  gefunden: `.mtl` (`model.mtl`, Companion-Datei von `model.obj`) auch
+  nicht: erster echter Rundlauf zeigt, ob `fdo-squirrel` unklassifizierte
+  Dateien ignoriert, mit einer Default-Rolle versieht oder abbricht. Je
+  nach Befund entweder in `fdo-squirrel` eine `auxiliary`-Regel für
+  `viewer/` (und ggf. `.mtl`) ergänzen (Beschluss: dort nachbessern, nicht
+  hier umgehen — siehe A4) oder, falls ein Abbruch droht, die betroffenen
+  Dateien vorerst unter einem bereits klassifizierten Pfad ablegen
+  (`data/documentation/viewer/`) als Übergangslösung. **Ergänzt 2026-09-07
+  (S6):** dieselbe Lücke gilt auch, ob `data/textures/` (Pfadpräfix
+  `textures/`, nicht `data/textures/`) von `classification_rules.yaml`
+  tatsächlich noch als `auxiliary` erkannt wird, oder ob der Pfad-Präfix
+  nur auf ein Top-Level-`textures/` passt — im S6-Layout (A2, seit
+  2026-09-03 so festgelegt, hier nicht neu verhandelt) liegt es unter
+  `data/textures/`. Auch das zeigt sich erst am echten Rundlauf.
 - **`MD.cff.id` nach Zenodo-Upload:** manuell nachtragen, oder ein späterer
   Schritt (`S7`?), der das automatisiert? Zenodo-Upload selbst ist ohnehin
   außerhalb dieses Repos (kein Netzwerk-Schreibzugriff hier vorgesehen).
@@ -1289,7 +1411,16 @@ Mehrfach-Lauf) — dieser Lauf hatte 5/5 Erfolge, kein Fehlerfall dabei.
   ohnehin noch S1-Stubs (`nothing_to_do()`), betrifft niemanden, bis S6
   tatsächlich angegangen wird. Beim Implementieren von S6 `--slug`/
   `getattr(args, "slug", None)` nach demselben Muster wie S3–S5 ergänzen.
+  **Erledigt 2026-09-07 (S6):** `bundle` hat jetzt `--slug`, gleiches
+  Muster wie S3–S5 (siehe S6 in Teil C). `build_fdo` (S7) ist weiterhin
+  ein reiner Stub, betrifft also weiterhin niemanden — der Punkt bleibt
+  bis S7 offen, nur für `bundle` erledigt.
 - **Echter Batch-Fetch gegen reale, herunterladbare Modelle: erledigt**
   (Nachtrag 2026-09-07 (7)) — 5/5 Modelle real gefetcht, konvertiert,
-  komprimiert und beschrieben, kein Fehler. Nächster offener Punkt ist
-  jetzt S6 (`bundle`), nicht mehr die Verifikation von S2–S5.
+  komprimiert und beschrieben, kein Fehler.
+- **S6 (`bundle`) implementiert und gegen Fixtures verifiziert** (siehe S6
+  in Teil C, Erledigt 2026-09-07) — nicht mehr der offene Punkt. Nächster
+  offener Punkt ist jetzt **S7** (`build_fdo`, Rundlauf durch
+  `fdo-squirrel`) — und, davor, Flos echter Lauf von S6 gegen Govan 2 +
+  Freshford auf der Windows-Maschine (siehe S6-Erledigt-Abschnitt für den
+  genauen Befehl), um `viewer/index.html` wirklich im Browser zu prüfen.
