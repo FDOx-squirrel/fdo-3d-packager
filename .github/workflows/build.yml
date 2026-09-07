@@ -1,0 +1,61 @@
+name: build
+
+# Smoke-tests convert -> nexus -> mdcff -> bundle -> build_fdo end to end
+# on every push and pull request (PRIMER.md S9). Modelled on
+# fdo-squirrel-registry's own build.yml (`python main.py --strict` is the
+# smoke test PRIMER.md A3 already describes, run in CI instead of by
+# hand) -- copied, not re-invented (PRIMER.md A3), but adapted: unlike the
+# registry, this repo's default run needs Blender and nxsbuild/
+# nxscompress, neither pip-installable nor available on a GitHub-hosted
+# runner without a heavy install. `fetch` itself stays untested here too
+# (network=True, needs a Sketchfab token) -- excluded automatically, same
+# as the registry excludes `harvest`.
+#
+# What this workflow actually tests: the wiring, not Blender/nxsbuild's
+# own correctness (out of scope -- that's upstream's job, PRIMER.md A3
+# "reuse means copying, not compensating for someone else's bugs"). A
+# synthetic data/raw/ci-smoke/ fixture stands in for `fetch`
+# (seed_fixture.py), and fake_blender.py/fake_nxsbuild.py/
+# fake_nxscompress.py (all three in .github/ci-fixtures/) stand in for the
+# two external binaries -- see each file's own docstring. `build_fdo` (S7)
+# is the one step that runs for real: `fdo-squirrel` is a genuine pip
+# dependency (requirements.txt), so this workflow performs a real round
+# trip through it against real (if minimal) input on every run.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Make CI fixture scripts executable
+        run: chmod +x .github/ci-fixtures/fake_blender.py .github/ci-fixtures/fake_nxsbuild.py .github/ci-fixtures/fake_nxscompress.py
+
+      - name: Seed a synthetic data/raw/ fixture (stands in for fetch)
+        run: python .github/ci-fixtures/seed_fixture.py
+
+      - name: Run convert..build_fdo against the fixture, --strict
+        run: >
+          python main.py --strict --slug ci-smoke
+          --blender-bin .github/ci-fixtures/fake_blender.py
+          --nxsbuild-bin .github/ci-fixtures/fake_nxsbuild.py
+          --nxscompress-bin .github/ci-fixtures/fake_nxscompress.py
+          --publisher-label "Research Squirrel Engineers Network"
+          --publisher-id "http://www.wikidata.org/entity/Q73901970"
+
+      - name: Confirm fdo-metadata.ttl was actually produced
+        run: test -s dist/ci-smoke_release/fdo-metadata.ttl

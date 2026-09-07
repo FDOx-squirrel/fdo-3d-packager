@@ -34,7 +34,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Callable, Optional
 
-from py.fdo_3d_packager_utils import discover_slugs
+from py.fdo_3d_packager_utils import discover_bundle_slugs, discover_slugs
 
 
 @dataclass(frozen=True)
@@ -168,6 +168,26 @@ def resolve_selection(args: argparse.Namespace) -> list[str]:
     if args.skip:
         ids = [i for i in ids if i != args.skip]
     return ids
+
+
+def _discover_slugs_for(selection: list[str]) -> list[str]:
+    """Which slugs `--all-slugs` should loop `selection` over.
+
+    Found the hard way (S9): every step but `build_fdo` resolves its own
+    slug via data/raw/<slug>/source_info.json (resolve_slug(), see
+    fdo_3d_packager_utils.py), so `discover_slugs()` (data/raw/-based) is
+    the right source for any selection touching one of those -- but
+    `build_fdo` (S7) resolves against dist/<slug>.zip instead
+    (resolve_bundle_slug(), deliberately data/raw/-independent, see its own
+    docstring), so a `--only build_fdo --all-slugs` run has no business
+    requiring data/raw/ to exist at all. `selection` only ever equals
+    `["build_fdo"]` via `--only build_fdo` or `--from build_fdo` (it's last
+    in STEPS, and `--skip` takes a single step, so no other combination
+    isolates it) -- every other selection includes at least one
+    data/raw/-based step, for which `discover_slugs()` remains correct."""
+    if selection == ["build_fdo"]:
+        return discover_bundle_slugs()
+    return discover_slugs()
 
 
 def print_list() -> None:
@@ -324,7 +344,7 @@ def main() -> int:
             print("\nfetch is part of this run: the rest would continue with "
                   "whichever model(s) it fetches, not --all-slugs discovery.")
         elif args.all_slugs:
-            slugs = discover_slugs()
+            slugs = _discover_slugs_for(selection)
             print(f"\n--all-slugs: would run the above for {len(slugs)} slug(s): {', '.join(slugs) or '(none found)'}")
         return 0
 
@@ -336,9 +356,12 @@ def main() -> int:
         return 1
 
     if args.all_slugs:
-        slugs = discover_slugs()
+        slugs = _discover_slugs_for(selection)
         if not slugs:
-            print("--all-slugs: no data/raw/<slug>/source_info.json found -- run fetch first", file=sys.stderr)
+            if selection == ["build_fdo"]:
+                print("--all-slugs: no dist/<slug>.zip found -- run bundle first", file=sys.stderr)
+            else:
+                print("--all-slugs: no data/raw/<slug>/source_info.json found -- run fetch first", file=sys.stderr)
             return 1
     else:
         slugs = [args.slug]  # a single None is fine -- resolve_slug() auto-detects

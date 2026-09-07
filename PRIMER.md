@@ -182,7 +182,7 @@ Eigenschaften, an denen sich ein Lauf messen lässt:
 | Schema-Drift-Befund (A1, 2026-09-03) war ein Fehlalarm | `example_fdo/MD.cff` trägt einen veralteten Kommentar ("spatial/temporal/… intentionally omitted in v0.1"), der nicht mehr zum aktuellen `MD.cff-schema.yaml` passt — das Schema unterstützt `spatial`/`temporal`/`heritage_object`/`technique` inzwischen offiziell als optionale Felder, und das Root-`MD.cff` (nicht `example_fdo/MD.cff`) ist das Beispiel, das zum Schema passt. Kein Handlungsbedarf für uns, aber A1s alter Befund war missverständlich | 2026-09-07, Korrektur |
 | `description` fehlt bei `--local` (kein CLI-Flag) bzw. manchmal bei `--sketchfab` | kein neues `--description`-Flag in `fetch` — `mdcff` erzeugt einen deterministischen Fallback-Satz aus `title`/`creator`, keine Warnung dafür (Chat-Entscheidung 2026-09-07, siehe S5) | 2026-09-07 |
 | `publishers` (Pflichtfeld in MD.cff) | kein Default (auch nicht LEIZA) — `--publisher-label` ist für `mdcff` Pflicht, fehlt es, bricht der Schritt hart ab (nicht nur Warning/--strict). **Ergänzt 2026-09-07 (2):** Fallback auf `FDO_PUBLISHER_LABEL`/`FDO_PUBLISHER_ID` Env-Vars (Muster `BLENDER_BIN`), weiterhin kein Code-Default | 2026-09-07 |
-| Wer ist `publisher` in der Praxis? | **immer** "Research Squirrel Engineers Network" (`https://github.com/Research-Squirrel-Engineers`), **nie** LEIZA — fast alle Modelle sind Fremdmaterial (Citizen Scientists, Museen) oder Flos private Arbeit, LEIZA hat institutionell keinen Anspruch darauf. Das LEIZA-Beispiel im ersten S5-Patch war ein irreführendes Platzhalterbeispiel in der Doku, kein realer Anwendungsfall | 2026-09-07 (2) |
+| Wer ist `publisher` in der Praxis? | **immer** "Research Squirrel Engineers Network", **nie** LEIZA — fast alle Modelle sind Fremdmaterial (Citizen Scientists, Museen) oder Flos private Arbeit, LEIZA hat institutionell keinen Anspruch darauf. Das LEIZA-Beispiel im ersten S5-Patch war ein irreführendes Platzhalterbeispiel in der Doku, kein realer Anwendungsfall. **`--publisher-id` geändert 2026-09-07 (S9):** jetzt der Wikidata-Eintrag `http://www.wikidata.org/entity/Q73901970` statt der GitHub-Org-URL `https://github.com/Research-Squirrel-Engineers` — Wikidata-IRI passt besser zu einem RDF/LOD-Kontext (N4O-KG) als eine GitHub-Org, real im ersten kompletten S0–S7-Rundlauf verwendet (Nachtrag 2026-09-07 (2) unter S7). Die GitHub-URL bleibt technisch gültig (`--publisher-id` ist Freitext, keine Validierung), ist aber nicht mehr die empfohlene README-Beispielangabe | 2026-09-07 (2), 2026-09-07 (S9) |
 | `source_info.json`'s `todo_placeholders` blockieren `mdcff`? | Vorschlag aus 2026-09-04 bestätigt als **Nein** — nur `Warning:`-Nachricht wie bei `fetch`, harter Abbruch erst mit `--strict` (Chat-Entscheidung 2026-09-07, siehe S5) | 2026-09-07, bestätigt (widerruft den Vorschlag von 2026-09-04) |
 | `MD.cff.id`-Platzhalter beim `--strict`-Mechanismus | bewusst **außerhalb** der Warning/--strict-Logik oben — die Zeile "PID wird von diesem Repo nicht vergeben" (2026-09-03) ist ein Dauerzustand, kein vor Release behebbares TODO, ein `--strict`-CI-Lauf darf daran nie scheitern | 2026-09-07 |
 | `keywords` in MD.cff | fixer Default (3D data / Cultural Heritage, dieselben Wikidata-IDs wie `fdo-squirrel`s Root-`MD.cff`), nicht CLI-konfigurierbar — dieses Repo packt immer dieselbe Domäne | 2026-09-07 |
@@ -237,6 +237,7 @@ Nicht anwendbar in S1 — dieses Repo veröffentlicht selbst keine RDF-IRIs
 | S6 | `bundle`-Schritt: `dist/<slug>.zip` im `fdo-squirrel`-Layout | fdo-3d-packager | S3, S4, S5 | erledigt 2026-09-07 |
 | S7 | `dist/<slug>.zip` durch `fdo-squirrel` schicken, `fdo-metadata.ttl` als Beleg (Muster: registry S8) | fdo-3d-packager | S6 | erledigt 2026-09-07 |
 | S8 | Batch-Fetch (`--sketchfab` wiederholbar) + Multi-Slug-Infrastruktur (`data/raw/<slug>/source_info.json`, `--slug`, `--all-slugs`) | fdo-3d-packager | S2–S5 | erledigt 2026-09-07 |
+| S9 | `--all-slugs`-Fix für `build_fdo` ohne `data/raw/`; CI (`--strict`-Smoke-Test gegen Fakes für Blender/nxsbuild/nxscompress, echter Rundlauf durch `fdo-squirrel`) | fdo-3d-packager | S7, S8 | erledigt 2026-09-07 |
 
 S3 und S4 sind technisch unabhängig von S5 und können in beliebiger
 Reihenfolge bzw. parallel in Angriff genommen werden; S5 braucht die
@@ -1634,6 +1635,129 @@ Mehrfach-Lauf) — dieser Lauf hatte 5/5 Erfolge, kein Fehlerfall dabei.
 
 ---
 
+## S9 — `--all-slugs`-Fix + CI
+
+[#s9--all-slugs-fix--ci](#s9--all-slugs-fix--ci)
+
+**Ziel:** zwei der in S7 offen gebliebenen Punkte schließen: `--all-slugs`
+verlangt auch dann `data/raw/`, wenn nur `build_fdo` gewählt ist (Teil D);
+und es gibt noch keine CI (`.github/workflows/`), anders als
+`fdo-squirrel-registry`. Zenodo-Nachbereitung bleibt bewusst draußen
+(Chat-Entscheidung 2026-09-07) — der nächste Schritt danach ist
+`fdo-squirrel-md-generator`, wo `MD.cff` interaktiv geladen/bearbeitet
+werden soll, bevor überhaupt etwas Richtung Zenodo geht.
+
+**Uploads für diesen Schritt:** kein Repo-Bundle -- GitHub-Link, frisch
+geklont (der committete Stand enthielt bereits Flos `fix bugs`-Commit, der
+`dist/govan-2.zip`/`dist/freshford-...zip` aus git entfernt und
+`data/*`/`PATCH-README.md`/`cache*` neu ignoriert hat -- nicht Teil dieses
+Schritts, aber relevant für dessen Substanz, siehe unten).
+
+**Substanz:**
+
+- **`--all-slugs`-Fix:** neue `_discover_slugs_for(selection)` in
+  `main.py`, an beiden Stellen verwendet, die vorher hart `discover_slugs()`
+  (data/raw/-basiert) aufriefen (`--dry-run`-Zweig und der echte Lauf).
+  Regel: `selection == ["build_fdo"]` (die einzige Kombination, die
+  `--only build_fdo` oder `--from build_fdo` je erzeugen -- `build_fdo`
+  steht als letztes in `STEPS`, `--skip` nimmt nur einen einzelnen Schritt)
+  → `discover_bundle_slugs()` (dist/*.zip-basiert, S7); jede andere
+  Auswahl → weiterhin `discover_slugs()`, weil `bundle`/`convert`/`nexus`/
+  `mdcff` alle über `load_source_info()` gehen und `data/raw/` brauchen.
+  Keine allgemeinere Neukonstruktion des Auswahl-Modells (das wäre größer
+  als dieser Punkt) -- gezielter Fix für genau die eine bekannte Lücke.
+- **CI (`.github/workflows/build.yml`), Muster `fdo-squirrel-registry`s
+  `build.yml` (A3: kopiert, nicht neu erfunden), aber angepasst:** die
+  Registry ist reines Python, ihr Default-Lauf braucht nichts, was in
+  GitHub-hosted Runnern fehlt. Dieses Repo braucht Blender und
+  `nxsbuild`/`nxscompress` für `convert`/`nexus` -- beides weder
+  pip-installierbar noch ohne Weiteres in CI verfügbar (`nxsbuild` bräuchte
+  einen Build aus Quellcode gegen Qt/vcglib). Deshalb:
+  - **`fetch` bleibt ungetestet** (network=True, bräuchte einen Sketchfab-
+    Token) -- wie bei der Registry automatisch ausgeschlossen, kein Flag
+    nötig.
+  - **`data/raw/ci-smoke/` wird synthetisch erzeugt**
+    (`.github/ci-fixtures/seed_fixture.py`), nicht committed (`data/*` ist
+    seit Flos `fix bugs`-Commit ohnehin ignoriert) -- exakt der
+    `source_info.json`-Vertrag, den ein echter `fetch`-Lauf auch schreiben
+    würde, von Hand befüllt statt über Sketchfab geholt.
+  - **Fakes für Blender/`nxsbuild`/`nxscompress`**
+    (`.github/ci-fixtures/fake_blender.py`/`fake_nxsbuild.py`/
+    `fake_nxscompress.py`, neu **committed**, anders als die früheren
+    Sandkasten-Fakes aus S3/S4, die "nicht Teil des Patches" waren) --
+    prüfen nicht die reale 3D-Qualität (nicht dieses Repos Aufgabe, A3),
+    sondern nur, dass `convert`/`nexus` die Binaries korrekt aufrufen, ihre
+    Outputs an den erwarteten Pfaden finden und weiterreichen. Gleiches
+    "Existenz-Marker"-Prinzip, das eine frühere Sandkasten-Verifikation
+    schon ad hoc genutzt hatte (S5), jetzt aber dauerhaft im Repo statt
+    einmalig im Chat.
+  - **`build_fdo` (S7) läuft in CI echt**, nicht gefaked -- `fdo-squirrel`
+    ist eine echte Pip-Abhängigkeit, der Rundlauf ist damit ein echter
+    Determinismus-/Schema-Test, kein weiterer Fake.
+  - `fake_blender.py` schreibt bewusst ein `model.mtl`, das
+    `texture.jpg` referenziert (von `seed_fixture.py` mitgeliefert), nicht
+    nur ein texturloses Modell -- damit läuft `_copy_textures_from_raw()`
+    (S3) auch in CI mit, nicht nur der unbe-texturierte Zweig.
+- **Echter Fund beim ersten CI-Testlauf, nicht vorab bekannt:** die erste
+  Fassung der Fixture ließ `creator_profile` leer (ein legitimer Fall --
+  z. B. ein echter `--local`-Fetch ohne `--creator-profile`). `build_fdo`
+  brach daraufhin an `fdo-squirrel` ab: `creators[0] must contain keys
+  'id' and 'label'`. Unser eigenes (und `fdo-squirrel`s eigenes!)
+  `MD.cff-schema.yaml` nennt `id` für `creators` aber ausdrücklich optional
+  (`idLabelEntityOptionalId`, siehe `_entity()` in `step_mdcff.py`) --
+  `fdo-squirrel`s Crosswalk (`require_id_label()`) verlangt es trotzdem
+  hart, im Widerspruch zum eigenen Schema. Betrifft nicht nur die
+  CI-Fixture: **jeder echte `--local`-Fetch ohne `--creator-profile` würde
+  denselben Absturz in `build_fdo` produzieren.** Kein Fix hier (A4:
+  gehört nach `fdo-squirrel`, separater Chat) -- die Fixture bekam
+  stattdessen einen echten `creator_profile`-Wert, damit CI die eigene
+  Verdrahtung testet statt an einem fremden Bug hängenzubleiben; der Bug
+  selbst bleibt dokumentiert, nicht verschwiegen.
+- **`README.md` nachgezogen:** fehlender `build_fdo`-Nutzungsabschnitt
+  ergänzt (war seit dem S7-Patch schlicht vergessen -- `bundle` hatte
+  einen, `build_fdo` keinen), `--publisher-id`-Beispiele auf den
+  Wikidata-Eintrag umgestellt (siehe A4), echtes `--from fetch`-Beispiel
+  (Flos tatsächlicher Befehl, S7-Nachtrag) neben dem generischen ergänzt.
+
+**Abnahme:** `python main.py --only build_fdo --all-slugs` gegen ein
+Checkout ohne `data/raw/`, aber mit `dist/*.zip`, findet die Slugs und
+läuft; jede andere Schrittauswahl verlangt weiterhin `data/raw/` wie
+zuvor. `.github/workflows/build.yml` läuft grün gegen einen frischen Push/
+PR (`--strict`, kein manuelles Zutun).
+
+### Erledigt 2026-09-07
+
+[#erledigt-2026-09-07-9](#erledigt-2026-09-07-9)
+
+`--all-slugs`-Fix gegen echte Szenarien geprüft (frischer venv-Klon): leere
+`dist/`+`data/raw/` → `build_fdo --all-slugs` meldet klar "no
+dist/<slug>.zip found"; zwei Dummy-ZIPs in `dist/` ohne `data/raw/` →
+`--only build_fdo --all-slugs --dry-run` und `--from build_fdo --all-slugs
+--dry-run` finden beide Slugs korrekt; jede andere Schrittauswahl
+(`--only bundle --all-slugs` u. Ä.) verlangt weiterhin `data/raw/` wie vor
+dem Fix -- keine Regression. `--all-slugs`+`--slug` zusammen weiterhin ein
+Fehler, `--list`/Default-`--dry-run` unverändert.
+
+CI-Workflow lokal simuliert (nicht nur gelesen): frischer venv,
+`pip install -r requirements.txt` (zieht `fdo-squirrel@504b7af` echt),
+`seed_fixture.py`, dann `main.py --strict --slug ci-smoke` mit den drei
+Fakes -- **komplette Kette `convert`→`nexus`→`mdcff`→`bundle`→`build_fdo`
+läuft grün durch, `fdo-metadata.ttl` real erzeugt** (17 249 Byte, 36
+`dcat:Distribution`-Einträge, `fdo-squirrel`-Rundlauf also echt, nicht
+gefaked). Zweiter Lauf gegen dieselbe Fixture: weiterhin grün, keine
+Regression, gleiche 36 Distributionen. `test -s dist/ci-smoke_release/
+fdo-metadata.ttl` (der letzte Workflow-Schritt) bestätigt non-empty.
+
+**Damit ist der Zusammenhang mit Flos `fix bugs`-Commit geklärt, nicht nur
+zur Kenntnis genommen:** dass `dist/govan-2.zip`/`dist/freshford-...zip`
+nicht mehr committed sind, betrifft diese CI **nicht** -- sie hängt an
+keiner committeten Fixture mehr, sondern erzeugt ihre eigene synthetisch,
+bei jedem Lauf neu. Ob die beiden großen ZIPs künftig wieder committed
+werden (z. B. für S7-artige manuelle Verifikationen wie in dessen eigenem
+Erledigt-Abschnitt) oder bewusst draußen bleiben, ist weiterhin offen --
+für CI ist es aber irrelevant geworden.
+
+---
 
 ## Teil D — Offene Punkte
 
@@ -1656,6 +1780,10 @@ Mehrfach-Lauf) — dieser Lauf hatte 5/5 Erfolge, kein Fehlerfall dabei.
   würde `main.py`s Schrittauswahl-Modell ändern (welche Discovery-Funktion
   je nach `selection` greift), etwas Grundsätzlicheres als S7 selbst, daher
   als eigener Punkt notiert statt hier nebenbei entschieden.
+  **Erledigt 2026-09-07 (S9):** `_discover_slugs_for(selection)` in
+  `main.py` löst genau diesen einen Fall (`selection == ["build_fdo"]`)
+  über `discover_bundle_slugs()` auf, alles andere weiterhin über
+  `discover_slugs()` -- kein größeres Redesign nötig, siehe S9 in Teil C.
 - **Wie wird `fdo-squirrel` in S7 eingebunden? Erledigt 2026-09-07 (S7):**
   Pip aus GitHub, gepinnt auf `fdo-squirrel@504b7af`, Konsolenskript per
   `sysconfig.get_path("scripts")` aufgerufen (Variante von Option (a), aber

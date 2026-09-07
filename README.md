@@ -141,6 +141,14 @@ skip ahead to.
 python main.py --from fetch --sketchfab "https://sketchfab.com/3d-models/aaa..." --sketchfab "https://sketchfab.com/3d-models/bbb..." --nxsbuild-bin "C:\nexus\nxsbuild.exe" --publisher-label "Research Squirrel Engineers Network"
 ```
 
+A real run of this looks like the following -- both models fetched,
+converted, packaged and run through `fdo-squirrel` in one call
+(confirmed end to end, PRIMER.md S7 Nachtrag 2026-09-07 (2)):
+
+```cmd
+python main.py --from fetch --sketchfab "https://sketchfab.com/3d-models/govan-2-b9dc56bfc1d342f6b4da3281e6629c07" --sketchfab "https://sketchfab.com/3d-models/freshford-st-lachtains-well-low-poly-ae1e1f4daa7d433dbbf076407134e81e" --nxsbuild-bin "C:\Nexus_43\nxsbuild.exe" --nxscompress-bin "C:\Nexus_43\nxscompress.exe" --publisher-label "Research Squirrel Engineers Network" --publisher-id "http://www.wikidata.org/entity/Q73901970"
+```
+
 `fetch` always runs exactly once (never per-slug -- the slugs don't exist
 before it runs), then the rest of the selection runs automatically for
 exactly the model(s) it just fetched, not every model ever fetched.
@@ -184,11 +192,12 @@ Once `nexus` has run, `mdcff` picks up `data/raw/<slug>/source_info.json` and
 has no default (there is no sensible one to guess):
 
 ```cmd
-python main.py --only mdcff --publisher-label "Research Squirrel Engineers Network" --publisher-id "https://github.com/Research-Squirrel-Engineers"
+python main.py --only mdcff --publisher-label "Research Squirrel Engineers Network" --publisher-id "http://www.wikidata.org/entity/Q73901970"
 ```
 
-`--publisher-label` is required; `--publisher-id` (e.g. a GitHub/ROR URL)
-is optional. Both fall back to the `FDO_PUBLISHER_LABEL`/
+`--publisher-label` is required; `--publisher-id` (e.g. a Wikidata/ROR IRI --
+the Research Squirrel Engineers Network's own Wikidata entity,
+[Q73901970](https://www.wikidata.org/wiki/Q73901970), above) is optional. Both fall back to the `FDO_PUBLISHER_LABEL`/
 `FDO_PUBLISHER_ID` environment variables (same pattern as `--blender-bin`/
 `BLENDER_BIN`), so you don't have to retype them on every run -- there is
 still no hardcoded default (see `PRIMER.md` A4 for why: almost every model
@@ -243,6 +252,25 @@ the ZIP when `dist/<slug>/textures/` doesn't exist. Two runs over
 unchanged inputs produce a byte-identical `dist/<slug>.zip`. Missing
 `convert`/`nexus`/`mdcff` output fails the step outright with a clear
 message naming what's missing.
+
+Once `bundle` has run, `build_fdo` picks up `dist/<slug>.zip` automatically
+and needs no flags of its own:
+
+```cmd
+python main.py --only build_fdo
+```
+
+It runs the ZIP through a real `fdo-squirrel` instance (`pip install -r
+requirements.txt` already installed it, see External requirements below)
+and writes the result to `dist/<slug>_release/` -- `fdo-metadata.ttl`, the
+HTML/JSON modelling reports, a Mermaid diagram, and `fdo-squirrel`'s own
+re-zipped "finished FDO bundle" ready to publish by hand. This directory is
+gitignored (`dist/*_release/`): it's a rebuildable byproduct of the
+already-committed `dist/<slug>.zip`, not a second citable version. Nothing
+here talks to Zenodo -- that upload, and copying the resulting DOI into
+`MD.cff`'s `id` field, stays manual (`PRIMER.md` A4). Missing
+`dist/<slug>.zip` (i.e. `bundle` hasn't run) or a missing `fdo-squirrel`
+install both fail the step outright with a clear message.
 
 ## External requirements (not pip-installable)
 
