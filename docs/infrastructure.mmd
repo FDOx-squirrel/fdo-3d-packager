@@ -1,0 +1,46 @@
+%% fdo-3d-packager -- infrastructure overview: Sketchfab/local model to FDO.
+%% Source of truth for docs/infrastructure.jpg (see render_infrastructure_diagram.py)
+%% and for the copy embedded in README.md -- keep both in sync by hand,
+%% this file is the one either should be regenerated/copied from.
+flowchart TD
+    SF([Sketchfab]):::ext
+    LF([Local file]):::ext
+
+    S2["fetch (S2)\ndata/raw/{slug}/"]
+    S3["convert (S3)\nmodel.obj + preview.png"]
+    S4["nexus (S4)\nmodel.nxs / model.nxz"]
+    S5["mdcff (S5)\nMD.cff + CITATION.cff"]
+    S6["bundle (S6)\ndist/{slug}.zip\n+ 3DHOP viewer"]
+    S7["build_fdo (S7)\nfdo-metadata.ttl"]
+
+    BLENDER[/Blender\nexternal/]:::tool
+    NEXUSBIN[/nxsbuild + nxscompress\nexternal/]:::tool
+    SQUIRREL[/fdo-squirrel\npip dependency/]:::tool
+    VIEWER[/3DHOP viewer\nvendored/]:::tool
+
+    ZENODO(["Zenodo\nmanual upload"]):::manual
+    DOI["DOI"]:::manual
+
+    SF -->|"--sketchfab"| S2
+    LF -->|"--local"| S2
+    S2 --> S3
+    S3 --> S4
+    S2 --> S5
+    S4 --> S5
+    S3 --> S6
+    S4 --> S6
+    S5 --> S6
+    S6 --> S7
+
+    BLENDER -.-> S3
+    NEXUSBIN -.-> S4
+    VIEWER -.-> S6
+    SQUIRREL -.-> S7
+
+    S7 --> ZENODO
+    ZENODO --> DOI
+    DOI -.->|"manual, next fetch"| S5
+
+    classDef ext fill:#e8f4fd,stroke:#4a90d9,color:#1a1a1a
+    classDef tool fill:#fff3cd,stroke:#d9a441,color:#1a1a1a
+    classDef manual fill:#f8d7da,stroke:#d9534f,color:#1a1a1a,stroke-dasharray: 5 5

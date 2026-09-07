@@ -4,6 +4,74 @@ Packages a 3D model -- fetched from Sketchfab or supplied as a local file --
 into a FAIR Digital Object (`fdo:3DDataFDO`) ready for ingest by
 [`fdo-squirrel`](https://github.com/FDOx-squirrel/fdo-squirrel).
 
+## Infrastructure overview
+
+How a Sketchfab model (or a local file) becomes an ingestible FDO --
+`fetch` through `build_fdo` are this repo's own steps (`main.py`, one
+module each under `py/`); the yellow parallelograms are external
+dependencies (Blender, `nxsbuild`/`nxscompress`, the vendored 3DHOP
+viewer, `fdo-squirrel` itself); the dashed red loop is the one manual step
+(Zenodo) nothing here automates.
+
+```mermaid
+flowchart TD
+    SF([Sketchfab]):::ext
+    LF([Local file]):::ext
+
+    S2["fetch (S2)\ndata/raw/{slug}/"]
+    S3["convert (S3)\nmodel.obj + preview.png"]
+    S4["nexus (S4)\nmodel.nxs / model.nxz"]
+    S5["mdcff (S5)\nMD.cff + CITATION.cff"]
+    S6["bundle (S6)\ndist/{slug}.zip\n+ 3DHOP viewer"]
+    S7["build_fdo (S7)\nfdo-metadata.ttl"]
+
+    BLENDER[/Blender\nexternal/]:::tool
+    NEXUSBIN[/nxsbuild + nxscompress\nexternal/]:::tool
+    SQUIRREL[/fdo-squirrel\npip dependency/]:::tool
+    VIEWER[/3DHOP viewer\nvendored/]:::tool
+
+    ZENODO(["Zenodo\nmanual upload"]):::manual
+    DOI["DOI"]:::manual
+
+    SF -->|"--sketchfab"| S2
+    LF -->|"--local"| S2
+    S2 --> S3
+    S3 --> S4
+    S2 --> S5
+    S4 --> S5
+    S3 --> S6
+    S4 --> S6
+    S5 --> S6
+    S6 --> S7
+
+    BLENDER -.-> S3
+    NEXUSBIN -.-> S4
+    VIEWER -.-> S6
+    SQUIRREL -.-> S7
+
+    S7 --> ZENODO
+    ZENODO --> DOI
+    DOI -.->|"manual, next fetch"| S5
+
+    classDef ext fill:#e8f4fd,stroke:#4a90d9,color:#1a1a1a
+    classDef tool fill:#fff3cd,stroke:#d9a441,color:#1a1a1a
+    classDef manual fill:#f8d7da,stroke:#d9534f,color:#1a1a1a,stroke-dasharray: 5 5
+```
+
+Rendered as a standalone image at
+[`docs/infrastructure.jpg`](docs/infrastructure.jpg) (for slides, papers,
+anywhere Mermaid doesn't render) -- both come from the same source,
+[`docs/infrastructure.mmd`](docs/infrastructure.mmd); regenerate the JPG
+after editing the source with:
+
+```cmd
+python docs\render_infrastructure_diagram.py
+```
+
+Needs Node.js (`npm install -g @mermaid-js/mermaid-cli`) and
+`pip install Pillow` -- documentation tooling only, neither is in
+`requirements.txt` since neither is needed to run the actual pipeline.
+
 ## Repository structure
 
 ```
@@ -15,6 +83,13 @@ fdo-3d-packager/
 ├── requirements.txt
 ├── .gitignore
 ├── main.py                 orchestrator -- the only entry point
+├── docs/
+│   ├── infrastructure.mmd            Mermaid source, Sketchfab/local -> FDO
+│   ├── infrastructure.jpg            rendered standalone image
+│   └── render_infrastructure_diagram.py   regenerates the JPG from the .mmd
+├── .github/
+│   ├── workflows/build.yml           CI: --strict smoke test, PRIMER.md S9
+│   └── ci-fixtures/                  fake Blender/nxsbuild/nxscompress + fixture seeder
 ├── schemas/md_cff/
 │   └── MD.cff-schema.yaml   vendored copy of fdo-squirrel's schema (mdcff step, S5)
 ├── assets/3dhop/            vendored, trimmed 3DHOP miniviewer (bundle step, S6)
@@ -39,7 +114,9 @@ fdo-3d-packager/
 │                            mdcff enrichment source, --sketchfab only)
 └── dist/                    products: dist/<slug>/model.obj+textures/+preview.png+
                              model.nxs+model.nxz+MD.cff+CITATION.cff, plus the
-                             final dist/<slug>.zip the bundle step (S6) writes
+                             final dist/<slug>.zip the bundle step (S6) writes,
+                             and dist/<slug>_release/ the build_fdo step (S7)
+                             writes (gitignored, see PRIMER.md S7)
 ```
 
 ## How to run
