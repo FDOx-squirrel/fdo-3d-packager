@@ -143,6 +143,42 @@ def load_source_info(slug: str | None = None) -> dict:
     return read_json(path)
 
 
+def discover_bundle_slugs() -> list[str]:
+    """Every slug a bundle currently exists for, i.e. dist/<slug>.zip --
+    build_fdo (S7)'s own input. Deliberately independent of
+    discover_slugs()/data/raw/ above: found the hard way (S7, real run
+    against this repo's own committed dist/govan-2.zip and
+    dist/freshford-st-lachtains-well-low-poly.zip) -- both ship without a
+    data/raw/<slug>/ counterpart (not committed, see A5), so a slug
+    resolution that goes through load_source_info() fails on exactly the
+    real fixtures this step is meant to run against. The bundle ZIP is
+    self-contained; S7 has no reason to require data/raw/ to still exist.
+    Sorted for determinism, same reasoning as discover_slugs()."""
+    if not DIST.exists():
+        return []
+    return sorted(p.stem for p in DIST.glob("*.zip"))
+
+
+def resolve_bundle_slug(explicit: str | None) -> str:
+    """--slug resolution for build_fdo (S7), mirroring resolve_slug() above
+    but against dist/<slug>.zip (discover_bundle_slugs()) instead of
+    data/raw/<slug>/ -- see that function's docstring for why the two
+    cannot share one implementation."""
+    if explicit:
+        return explicit
+    slugs = discover_bundle_slugs()
+    if len(slugs) == 1:
+        return slugs[0]
+    if not slugs:
+        raise FileNotFoundError(
+            "no dist/<slug>.zip found -- run `python main.py --only bundle ...` first"
+        )
+    raise ValueError(
+        f"multiple bundles found under dist/ ({', '.join(slugs)}) -- pass --slug to pick one, "
+        "or --all-slugs to run every one of them"
+    )
+
+
 # Wavefront MTL texture-map directives whose last whitespace-separated token
 # is a texture filename (options like -o/-s/-bm may precede it). Shared by
 # step_fetch.py (S2, resolving --local .obj siblings) and step_convert.py

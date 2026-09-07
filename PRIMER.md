@@ -174,7 +174,7 @@ Eigenschaften, an denen sich ein Lauf messen lässt:
 | 3DHOP-Miniviewer im Paket? | ja, ins `dist/<slug>.zip` — kein separates Deliverable. `classification_rules.yaml` hat dafür noch keine Regel (`.html`/`.js`/`.css`); wird als echter Befund in S7 (Rundlauf durch `fdo-squirrel`) sichtbar, ggf. dort nachzubessern statt hier zu umgehen | 2026-09-03 |
 | `distributions[]` vorbefüllen? | nein — `fdo-squirrel` klassifiziert selbst (`classification_rules.yaml`), wir liefern keine eigene Vorbefüllung. Lücken (siehe Viewer-Zeile) werden dort nachgebessert, nicht hier kompensiert | 2026-09-03 |
 | FDO-Build via `fdo-squirrel` | `dist/<slug>.zip` wird durch eine lokale `fdo-squirrel`-Instanz geschickt statt RDF-Erzeugung selbst nachzubauen (Muster: `fdo-squirrel-registry` S8) | 2026-09-03 |
-| Einbindungsmechanismus für `fdo-squirrel` | offen (pip aus GitHub? Git-Submodule? Pfad-Config?) — siehe Teil D | Vorschlag ausstehend |
+| Einbindungsmechanismus für `fdo-squirrel` | Pip aus GitHub, gepinnt (`fdo-squirrel@504b7af`), Konsolenskript per `sysconfig.get_path("scripts")` gefunden (Muster: `fdo-squirrel-registry` S8, wortwörtlich kopiert, siehe S7) | 2026-09-07 (S7), entschieden |
 | `source_info.json`-Vertrag (S2→S3/S4/S5) | eine Datei, von `fetch` geschrieben: `slug`, `model_file` (Pfad **relativ zu `data/raw/`**, kann ein Unterverzeichnis enthalten — z. B. `donaghmore-church-ruin/donaghmore-church-ruin.gltf`, korrigiert 2026-09-04, siehe S2-Nachtrag), `title`/`description`/`creator`/`creator_profile`/`licence`/`licence_url`/`source_url`/`sketchfab_uid`/`source_note`, plus `todo_placeholders` (Liste fehlender Pflichtfelder). Bei `--local` ohne `--title`/`--creator`/`--licence` werden `"TODO: … not set"`-Platzhalter geschrieben und `fetch` gibt eine mit `Warning:` beginnende Meldung zurück — nicht fatal im Normallauf, aber `--strict` (= CI) schlägt fehl, bis die Felder gesetzt sind. Dieselbe `Warning:`-Mechanik greift jetzt auch, wenn vom Modell referenzierte Begleitdateien (`scene.bin`, `textures/…`, `.mtl`) fehlen. `mdcff` (S5) soll den Bau verweigern, solange `todo_placeholders` nicht leer ist (Vorschlag, in S5 zu bestätigen) | 2026-09-04, korrigiert 2026-09-04 |
 | Begleitdateien eines Modells (`scene.bin`, `textures/…` bei `.gltf`; `.mtl`+Texturen bei `.obj`) | werden von `fetch` erkannt (`resolve_sibling_files()`) und unter denselben relativen Pfaden neben das Modell nach `data/raw/<slug>/` kopiert, statt nur die eine Modell-Datei zu kopieren — sonst bricht Blender (S3) an der relativen URI-Auflösung ab. `.glb` hat keine externen Begleitdateien (self-contained) | 2026-09-04, Befund aus erstem echten `--sketchfab`-Lauf |
 | Verhältnis zum künftigen Software-FDO-Packager (Git-Link → `fdo:SoftwareFDO`) | eigenes Repo (`fdo-software-packager`?), nicht dasselbe wie hier — `fetch`+`convert` sind fachlich verschieden (Sketchfab/Blender/Nexus vs. Git-Clone+Repo-Analyse), und A3 verlangt ohnehin Kopieren statt Referenzieren, ein gemeinsames Repo spart also keine Duplizierung, nur Übersicht. Was kopiert werden sollte, sobald das Schwester-Repo startet: MD.cff/CITATION.cff-Writer, Bundle-Layout, `build_fdo`-Schritt (S5–S7) | 2026-09-03, Vorschlag |
@@ -235,7 +235,7 @@ Nicht anwendbar in S1 — dieses Repo veröffentlicht selbst keine RDF-IRIs
 | S4 | `nexus`-Schritt: `nxsbuild`/`nxscompress` → `dist/model.nxs`/`.nxz` | fdo-3d-packager | S3 | erledigt 2026-09-04 |
 | S5 | `mdcff`-Schritt: `MD.cff` + `CITATION.cff` schreiben, gegen Schema validieren | fdo-3d-packager | S2, S4 | erledigt 2026-09-07 |
 | S6 | `bundle`-Schritt: `dist/<slug>.zip` im `fdo-squirrel`-Layout | fdo-3d-packager | S3, S4, S5 | erledigt 2026-09-07 |
-| S7 | `dist/<slug>.zip` durch `fdo-squirrel` schicken, `fdo-metadata.ttl` als Beleg (Muster: registry S8) | fdo-3d-packager | S6 | offen |
+| S7 | `dist/<slug>.zip` durch `fdo-squirrel` schicken, `fdo-metadata.ttl` als Beleg (Muster: registry S8) | fdo-3d-packager | S6 | erledigt 2026-09-07 |
 | S8 | Batch-Fetch (`--sketchfab` wiederholbar) + Multi-Slug-Infrastruktur (`data/raw/<slug>/source_info.json`, `--slug`, `--all-slugs`) | fdo-3d-packager | S2–S5 | erledigt 2026-09-07 |
 
 S3 und S4 sind technisch unabhängig von S5 und können in beliebiger
@@ -1114,6 +1114,146 @@ Govan 2 mit Textur). Offen bleibt nur noch S7 (`build_fdo`, Rundlauf durch
 
 ---
 
+## S7 — `build_fdo`
+
+[#s7--build_fdo](#s7--build_fdo)
+
+**Ziel:** `dist/<slug>.zip` (aus S6) wird durch eine echte `fdo-squirrel`-
+Instanz geschickt statt RDF-Erzeugung selbst nachzubauen (A4, Muster:
+`fdo-squirrel-registry` S8) -- `fdo-metadata.ttl` als Beleg, dass das Paket
+wirklich brauchbar ist, nicht nur schema-valide.
+
+**Uploads für diesen Schritt:** kein Repo-Bundle -- stattdessen der
+GitHub-Link (`FDOx-squirrel/fdo-3d-packager`), im Chat frisch geklont.
+
+**Substanz:**
+
+- **Einbindungsmechanismus (Teil-D-Punkt aus S0/A4, jetzt entschieden):**
+  Pip-Abhängigkeit (`requirements.txt`, gepinnt auf
+  `fdo-squirrel@504b7af` -- exakt der Commit, den auch
+  `fdo-squirrel-registry`s eigene `requirements.txt` für ihr S8 pinnt, und
+  zufällig auch `fdo-squirrel@master`s aktueller Stand), aufgerufen als das
+  von `pip` installierte Konsolenskript. `_fdo_squirrel_executable()` in
+  `py/step_build_fdo.py` ist **wortwörtlich aus
+  `fdo-squirrel-registry/py/step_release.py` kopiert** (A3: Wiederverwendung
+  heißt Kopieren, nicht Referenzieren) -- weder `shutil.which()` (findet
+  eine nicht aktivierte venv nicht) noch `sys.executable -m main`
+  (Namenskollision: `fdo-squirrel`s Einstiegsmodul heißt `main`, genau wie
+  dieses Repos eigener Orchestrator) funktionieren hier, aus denselben
+  Gründen wie in der Registry. Anders als dort ist bei uns kein eigener
+  Staging-Schritt nötig: `dist/<slug>.zip` liegt schon im von
+  `fdo-squirrel` erwarteten Layout (S6 baut es genau dafür), geht also
+  unverändert als `--package` rein.
+- `py/step_build_fdo.py`: Vollständigkeits-Gate prüft nur `dist/<slug>.zip`
+  (S6 muss gelaufen sein). **Slug-Auflösung bewusst nicht über
+  `resolve_slug()`/`load_source_info()` (data/raw/-basiert, wie S3-S6),
+  sondern über eine neue `resolve_bundle_slug()`/`discover_bundle_slugs()`
+  in `fdo_3d_packager_utils.py`, die direkt `dist/*.zip` abfragt** -- Grund
+  im Erledigt-Abschnitt unten (echter Bug am ersten Testlauf gefunden, nicht
+  vorab entschieden). Ruft `fdo-squirrel --package dist/<slug>.zip
+  --outdir dist/<slug>_release/` per `subprocess.run(..., check=True)` --
+  unbuffered, Ausgabe läuft direkt durch, gleiches Muster wie die
+  nxsbuild/nxscompress/Blender-Aufrufe in S3/S4, bewusst *nicht* das
+  `capture_output=True`-Muster der Registry (deren eigener Stil, nicht
+  dieses Repos). Ein fehlendes `fdo-squirrel` im Interpreter bricht den
+  Schritt hart ab (`return False`), unabhängig von `--strict` -- gleiches
+  Verhalten wie ein fehlendes Blender/nxsbuild in S3/S4, kein Sonderfall.
+- **Output-Verzeichnis `dist/<slug>_release/`, gitignored** -- neue
+  `.gitignore`-Regel `dist/*_release/`, gleiche Begründung wie
+  `fdo-squirrel-registry`s eigenes `dist/release/`: ein rebuildbares
+  Nebenprodukt aus einer bereits committeten Quelle (`dist/<slug>.zip`
+  selbst), keine zweite zitierbare Fassung. Der Zenodo-Publish bleibt
+  Handarbeit für einen Menschen mit Zugangsdaten (A3/A4, gleiche Begründung
+  wie bei `fetch`).
+
+**Abnahme:** `python main.py --only build_fdo` schlägt mit klarer Meldung
+fehl, wenn `dist/<slug>.zip` fehlt (S6 nicht gelaufen) oder `fdo-squirrel`
+nicht installiert ist. Mit vollständigen Eingaben: `dist/<slug>_release/`
+enthält `fdo-metadata.ttl` und die übrigen von `fdo-squirrel` erzeugten
+Dateien, Exit 0.
+
+### Erledigt 2026-09-07
+
+[#erledigt-2026-09-07-4](#erledigt-2026-09-07-4)
+
+Gegen echte S6-Outputs verifiziert, nicht gegen Fixtures: die beiden real
+gefetchten/konvertierten/gebauten `dist/<slug>.zip` aus S6 (`govan-2.zip`,
+39 121 654 Byte; `freshford-st-lachtains-well-low-poly.zip`, 22 049 205
+Byte), beide schon vor diesem Schritt im Repo committed. `fdo-squirrel`
+in einer echten venv im Sandkasten aus dem gepinnten
+`fdo-squirrel@504b7af` installiert (`pip install -r requirements.txt`
+gegen einen frischen Klon, nicht die Arbeitskopie), Konsolenskript per
+`sysconfig.get_path("scripts")` gefunden -- bestätigt für alle drei
+Layout-Fälle relevant hier (POSIX-venv).
+
+**Echter Bug am ersten echten Testlauf gefunden, nicht nur ein Fixture-
+Unterschied:** `data/raw/govan-2/source_info.json` existiert in diesem
+Repo **gar nicht** -- nur `dist/govan-2.zip` selbst ist committed (S6 hat
+nie `dist/<slug>/` oder `data/raw/` mit committed, nur das fertige ZIP).
+Die erste Fassung von `step_build_fdo.py` (Substanz oben, jetzt korrigiert)
+rief `load_source_info()` einzig auf, um an `slug` zu kommen, und scheiterte
+prompt mit `FileNotFoundError` gegen genau die beiden echten Fixtures, die
+dieser Schritt beweisen soll. Fix: eigene `resolve_bundle_slug()`/
+`discover_bundle_slugs()` in `fdo_3d_packager_utils.py`, die `dist/*.zip`
+direkt abfragt statt über `data/raw/` zu gehen -- S7 hat keinen fachlichen
+Grund, `data/raw/` vorauszusetzen, das Bundle ist selbsttragend. Nach dem
+Fix: `python py/step_build_fdo.py --slug govan-2` und `python main.py
+--only build_fdo --slug ...` (beide Slugs) laufen sauber durch, `--strict`
+bleibt grün, ein nicht existierender Slug bricht klar ab (Exit 1), zwei
+Bundles ohne `--slug` bricht mit Namensliste ab (wie `resolve_slug()`s
+Verhalten bei S3-S6). Zweifacher Lauf gegen dasselbe ZIP geprüft: kein
+Absturz bei bereits vorhandenem `dist/<slug>_release/` (Idempotenz-`rmtree`
+greift).
+
+**Zweiter echter Befund, nicht von uns verursacht:** `fdo-metadata.ttl`
+ist zwischen zwei Läufen gegen dasselbe unveränderte `dist/govan-2.zip`
+**nicht** byte-identisch -- eingegrenzt per Diff auf genau zwei der vier
+generierten Zusatz-Distributionen, `rdf_modelling_report.json` und
+`rdf_modelling_report.html`. Ursache: `fdo-squirrel`s eigener
+`generated_at`-Zeitstempel (`datetime.utcnow()`, in `main.py` bereits als
+`DeprecationWarning` sichtbar) landet im Report, ändert dessen SHA-256 und
+damit die davon abgeleitete `urn:fdo-squirrel:dist/<hash>`-IRI dieser
+beiden Distributionen bei jedem Lauf neu. `fdo-metadata.ttl` selbst und
+`fdo_overview.mermaid` (die anderen beiden generierten Distributionen)
+blieben in beiden Läufen identisch. Betrifft `fdo-squirrel`s eigenen
+Determinismus, nicht diesen Schritt hier (A3s "kein `datetime.now()`"-Regel
+gilt für unsere eigenen Generatoren, `step_build_fdo.py` selbst ruft nirgends
+die Uhr auf) -- notiert als Befund für einen künftigen `fdo-squirrel`-Chat,
+kein Fix hier.
+
+**Echter Befund (beantwortet den Teil-D-Punkt aus S6 abschließend, statt
+ihn nur zu bestätigen):** `fdo/classification_rules.yaml` bricht bei
+unklassifizierten Dateien **nicht** ab und ignoriert sie auch nicht --
+jede unbekannte Distribution bekommt stillschweigend die Fallback-Rolle
+`"data"`. Konkret an Govan 2 geprüft (`fdo:role` pro `fdo:path` aus dem
+geschriebenen `fdo-metadata.ttl`):
+
+| Pfad | erwartete Rolle | tatsächliche Rolle |
+|---|---|---|
+| `data/model/model.mtl` | `model` | `data` (keine `.mtl`-Regel) |
+| `data/textures/defaultMat_baseColor.jpeg` | `auxiliary` | `documentation` (Regel matcht nur ein Top-Level-`textures/`-Präfix, nicht `data/textures/`) |
+| `viewer/index.html`, `viewer/js/*.js`, `viewer/stylesheet/3dhop.css`, `viewer/LICENSE.txt` | (neue Rolle, z. B. `auxiliary`) | `data` (keine Regel) |
+| `viewer/skins/**/*.png`, `viewer/skins/backgrounds/light.jpg` | -- | `documentation` (trifft zufällig die Bild-Extension-Regel) |
+
+Kein Pipeline-Fehler in keinem der beiden Fälle -- `fdo-metadata.ttl` ist in
+beiden Läufen vollständig und valide, nur mit falscher/generischer Rolle
+für diese Distributionen. Der A4-Beschluss aus S6 ("dort nachbessern, nicht
+hier umgehen") gilt damit unverändert, ist aber jetzt an echten Daten
+belegt statt nur vermutet -- der eigentliche Fix (drei neue/erweiterte
+Regeln in `fdo-squirrel/fdo/classification_rules.yaml`) ist ein separater
+Patch in einem `fdo-squirrel`-Chat (A5: ein Repo pro Chat), nicht Teil
+dieses Schritts.
+
+**Nicht geprüft:** `pyshacl`/SHACL-Validierung von `fdo-metadata.ttl` selbst
+(kein SHACL-Gate in `fdo-squirrel`, das ist `fdo-squirrel-registry`s Job,
+S5) und der tatsächliche Zenodo-Upload (bewusst außerhalb dieses Schritts,
+siehe Substanz oben). Ebenfalls offen (neuer Teil-D-Punkt): `python main.py
+--only build_fdo --all-slugs` scheitert in einem Checkout ohne `data/raw/`
+(wie diesem hier) an `main.py`s eigener `discover_slugs()`, bevor
+`build_fdo` überhaupt läuft -- `--slug` explizit umgeht das, siehe Teil D.
+
+---
+
 ## S8 — Batch-Fetch & Multi-Slug-Infrastruktur
 
 [#s8--batch-fetch--multi-slug-infrastruktur](#s8--batch-fetch--multi-slug-infrastruktur)
@@ -1445,33 +1585,37 @@ Mehrfach-Lauf) — dieser Lauf hatte 5/5 Erfolge, kein Fehlerfall dabei.
   kopieren (nicht importieren, A3), dabei `fdo_type` und die
   domänenspezifischen `distributions[]`-Rollen anpassen. Kein Schritt in
   diesem Repo, bis das Schwester-Repo tatsächlich startet.
-- **Wie wird `fdo-squirrel` in S7 eingebunden?** Drei Optionen, keine
-  geprüft: (a) `pip install git+https://github.com/FDOx-squirrel/fdo-squirrel`
-  und `ingest.package_source`/`ingest.metadata_ingest` direkt importieren;
-  (b) Git-Submodule, lokal per Pfad aufgerufen (näher an `main.py`s
-  eigenem `--package`/`config.local.json`-Muster); (c) `fdo-squirrel` als
-  externe Voraussetzung dokumentieren (wie Blender/Nexus), Pfad per
-  `--fdo-squirrel-path` CLI-Flag. (b) und (c) vermeiden eine Paketierungs-
-  Abhängigkeit von einem Repo, das selbst noch v0.1 ist. Zu klären, sobald
-  S7 ansteht.
-- **`classification_rules.yaml`-Lücke für Viewer und `.mtl`, konkret zu
-  prüfen in S7.** Da der Viewer laut A4 mit ins Paket kommt, aber
-  `.html`/`.js`/`.css` keine Rolle in `fdo-squirrel`s
-  `classification_rules.yaml` haben — und, beim Implementieren von S6
-  gefunden: `.mtl` (`model.mtl`, Companion-Datei von `model.obj`) auch
-  nicht: erster echter Rundlauf zeigt, ob `fdo-squirrel` unklassifizierte
-  Dateien ignoriert, mit einer Default-Rolle versieht oder abbricht. Je
-  nach Befund entweder in `fdo-squirrel` eine `auxiliary`-Regel für
-  `viewer/` (und ggf. `.mtl`) ergänzen (Beschluss: dort nachbessern, nicht
-  hier umgehen — siehe A4) oder, falls ein Abbruch droht, die betroffenen
-  Dateien vorerst unter einem bereits klassifizierten Pfad ablegen
-  (`data/documentation/viewer/`) als Übergangslösung. **Ergänzt 2026-09-07
-  (S6):** dieselbe Lücke gilt auch, ob `data/textures/` (Pfadpräfix
-  `textures/`, nicht `data/textures/`) von `classification_rules.yaml`
-  tatsächlich noch als `auxiliary` erkannt wird, oder ob der Pfad-Präfix
-  nur auf ein Top-Level-`textures/` passt — im S6-Layout (A2, seit
-  2026-09-03 so festgelegt, hier nicht neu verhandelt) liegt es unter
-  `data/textures/`. Auch das zeigt sich erst am echten Rundlauf.
+- **`main.py --all-slugs` setzt `data/raw/` voraus, auch wenn nur
+  `build_fdo` (S7) ausgewählt ist.** `main.py`s eigene `--all-slugs`-
+  Auflösung ruft `discover_slugs()` (data/raw/-basiert) auf, *bevor* eine
+  Schrittauswahl überhaupt läuft -- selbst wenn diese Auswahl nur `build_fdo`
+  ist, das laut `resolve_bundle_slug()` (S7) gar kein `data/raw/` braucht.
+  Betrifft nur `--all-slugs`; `--slug <name>` explizit funktioniert
+  unverändert (siehe S7-Erledigt-Abschnitt, real gegen genau diesen Fall
+  geprüft: `dist/`-Bundles ohne `data/raw/`-Gegenstück). Kein Fix hier --
+  würde `main.py`s Schrittauswahl-Modell ändern (welche Discovery-Funktion
+  je nach `selection` greift), etwas Grundsätzlicheres als S7 selbst, daher
+  als eigener Punkt notiert statt hier nebenbei entschieden.
+- **Wie wird `fdo-squirrel` in S7 eingebunden? Erledigt 2026-09-07 (S7):**
+  Pip aus GitHub, gepinnt auf `fdo-squirrel@504b7af`, Konsolenskript per
+  `sysconfig.get_path("scripts")` aufgerufen (Variante von Option (a), aber
+  Subprocess-Aufruf des installierten Konsolenskripts statt direkter
+  `ingest.*`-Import) — wortwörtlich das in `fdo-squirrel-registry`s S8
+  bereits erprobte Muster, kopiert statt neu entschieden (A3). Details und
+  Begründung in S7 (Teil C).
+- **`classification_rules.yaml`-Lücke für Viewer, `.mtl` und
+  `data/textures/` — an echten Daten bestätigt, siehe S7.** Nicht mehr nur
+  vermutet: `fdo-squirrel` bricht bei unklassifizierten Dateien **nicht**
+  ab, sondern vergibt still die Fallback-Rolle `data` — bestätigt an den
+  echten S6-Bundles (Govan 2, Freshford), nicht an Fixtures. Betroffen sind
+  `.mtl` (keine Regel), `viewer/*.html`/`.js`/`.css`/`LICENSE.txt` (keine
+  Regel) und `data/textures/*` (Regel matcht nur ein Top-Level-`textures/`-
+  Präfix, nicht `data/textures/`, deshalb `documentation` statt
+  `auxiliary`). A4-Beschluss unverändert: Fix gehört nach
+  `fdo-squirrel/fdo/classification_rules.yaml`, nicht hierher — offener
+  Punkt bleibt bestehen, jetzt aber als konkreter, datenbelegter Patch-
+  Vorschlag für einen separaten `fdo-squirrel`-Chat (A5: ein Repo pro
+  Chat), nicht mehr als offene Frage.
 - **`MD.cff.id` nach Zenodo-Upload:** manuell nachtragen, oder ein späterer
   Schritt (`S7`?), der das automatisiert? Zenodo-Upload selbst ist ohnehin
   außerhalb dieses Repos (kein Netzwerk-Schreibzugriff hier vorgesehen).
@@ -1523,6 +1667,9 @@ Mehrfach-Lauf) — dieser Lauf hatte 5/5 Erfolge, kein Fehlerfall dabei.
   Muster wie S3–S5 (siehe S6 in Teil C). `build_fdo` (S7) ist weiterhin
   ein reiner Stub, betrifft also weiterhin niemanden — der Punkt bleibt
   bis S7 offen, nur für `bundle` erledigt.
+  **Erledigt 2026-09-07 (S7):** `build_fdo` hat jetzt ebenfalls `--slug`,
+  gleiches Muster (`load_source_info(getattr(args, "slug", None))`) —
+  Punkt vollständig erledigt, keine der beiden Schritte betrifft das noch.
 - **Echter Batch-Fetch gegen reale, herunterladbare Modelle: erledigt**
   (Nachtrag 2026-09-07 (7)) — 5/5 Modelle real gefetcht, konvertiert,
   komprimiert und beschrieben, kein Fehler.
@@ -1532,6 +1679,12 @@ Mehrfach-Lauf) — dieser Lauf hatte 5/5 Erfolge, kein Fehlerfall dabei.
   `fdo-squirrel`) — und, davor, Flos echter Lauf von S6 gegen Govan 2 +
   Freshford auf der Windows-Maschine (siehe S6-Erledigt-Abschnitt für den
   genauen Befehl), um `viewer/index.html` wirklich im Browser zu prüfen.
+  **Erledigt 2026-09-07 (S7):** Flos echter S6-Lauf ist gelaufen (S6-
+  Nachtrag (2)/(3), Viewer im Browser bestätigt) und S7 selbst ist jetzt
+  auch implementiert und gegen die beiden echten Bundles verifiziert
+  (siehe S7 in Teil C) — kein offener Punkt mehr aus dieser Zeile. Was S7
+  neu aufgemacht hat (die `classification_rules.yaml`-Lücke), steht als
+  eigener Punkt oben.
 - **3DHOP-Viewer zeigte kein sichtbares Modell im Browser — geklärt,
   kein Repo-Bug.** Echter Lauf bei Flo (S6, Nachtrag 2026-09-07 (2)/(3)):
   nach dem Icon-Fix lud `model.nxz` vollständig, Canvas blieb trotzdem

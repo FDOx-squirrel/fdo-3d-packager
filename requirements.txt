@@ -9,8 +9,15 @@ requests
 # requirements.txt).
 jsonschema
 
+# Run dist/<slug>.zip through fdo-squirrel (build_fdo step, S7) instead of
+# reimplementing RDF generation ourselves -- same pattern and same pinning
+# reasoning as fdo-squirrel-registry's own requirements.txt (S8): an
+# unpinned main follows whatever lands there next, and a classification or
+# generator change would silently reshape every future fdo-metadata.ttl
+# this step produces (PRIMER.md A4, "Gepinnte Laufzeit"). Invoked as the
+# installed console script, not imported -- see step_build_fdo.py.
+fdo-squirrel @ git+https://github.com/FDOx-squirrel/fdo-squirrel.git@504b7af
+
 # Not pip-installable, external requirements documented in README.md:
 #   - Blender (headless), for the convert step (S3)
 #   - nxsbuild / nxscompress from cnr-isti-vclab/nexus, for the nexus step (S4)
-#   - a local fdo-squirrel checkout, for the build_fdo step (S7);
-#     see PRIMER.md Teil D for how it gets wired in

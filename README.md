@@ -250,8 +250,13 @@ message naming what's missing.
 - **`nxsbuild` / `nxscompress`** from
   [`cnr-isti-vclab/nexus`](https://github.com/cnr-isti-vclab/nexus), for the
   `nexus` step.
-- A local **`fdo-squirrel`** checkout, for the `build_fdo` step -- exact
-  wiring not decided yet, see `PRIMER.md` Teil D.
+
+`fdo-squirrel` itself is **not** listed here despite the `build_fdo` step
+(S7) needing it -- unlike Blender/nxsbuild, it is a pip dependency
+(`requirements.txt`, pinned commit), installed by the same
+`pip install -r requirements.txt` as everything else; `build_fdo` finds it
+as the console script `pip` puts next to this interpreter, see
+`py/step_build_fdo.py`.
 
 The `bundle` step (S6) needs none of the above -- the
 [3DHOP](https://3dhop.net) viewer it packages is vendored under

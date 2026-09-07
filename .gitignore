@@ -28,3 +28,11 @@ config.local.json
 # ignored -- dist/ holds this repository's versioned, citable products
 # (see primer-repo skill). data/raw/ can hold large local scans or Sketchfab
 # downloads though; keep an eye on repo size before committing those.
+
+# --- build_fdo's (S7) release output ---
+# fdo-metadata.ttl, the HTML modelling report, the Mermaid source and
+# fdo-squirrel's own re-zipped "finished FDO bundle": rebuilt by every
+# `build_fdo` run from dist/<slug>.zip, which is already committed -- not a
+# second citable fassung, same reasoning as fdo-squirrel-registry's own
+# dist/release/ (PRIMER.md S8 pattern).
+dist/*_release/
