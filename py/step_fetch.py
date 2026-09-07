@@ -248,6 +248,12 @@ def build_source_info(
 
 
 def source_info_from_sketchfab(meta: dict, source_url: str, uid: str, args: argparse.Namespace) -> dict:
+    """Befund 2026-09-07: `user.profileUrl` is already in the Data API v3
+    response (confirmed against real-world usage, not just the API's own
+    docs) -- use it directly instead of only reconstructing
+    `https://sketchfab.com/{username}` by hand; the constructed form stays
+    as a fallback for the (currently unobserved) case that profileUrl is
+    missing."""
     license_info = meta.get("license") or {}
     user = meta.get("user") or {}
     username = user.get("username")
@@ -258,7 +264,8 @@ def source_info_from_sketchfab(meta: dict, source_url: str, uid: str, args: argp
         title=args.title or meta.get("name"),
         description=meta.get("description"),
         creator=args.creator or user.get("displayName") or username,
-        creator_profile=args.creator_profile or (f"https://sketchfab.com/{username}" if username else None),
+        creator_profile=args.creator_profile or user.get("profileUrl")
+        or (f"https://sketchfab.com/{username}" if username else None),
         licence=args.licence or license_info.get("label") or license_info.get("slug"),
         licence_url=args.licence_url or license_info.get("url"),
         source_url=source_url,

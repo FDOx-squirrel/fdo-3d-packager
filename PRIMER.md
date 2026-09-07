@@ -177,12 +177,15 @@ Eigenschaften, an denen sich ein Lauf messen lässt:
 | `MD.cff-schema.yaml` in diesem Repo | vendorte Kopie unter `schemas/md_cff/MD.cff-schema.yaml` (Stand `fdo-squirrel@504b7af5`, 2026-09-04), nicht live von `raw.githubusercontent.com` geladen — `mdcff` bleibt damit netzwerkfrei (A3). Von Hand aktualisieren, wenn sich das Schema upstream ändert; Datei trägt einen Header-Kommentar mit Quelle/Pin | 2026-09-07 |
 | Schema-Drift-Befund (A1, 2026-09-03) war ein Fehlalarm | `example_fdo/MD.cff` trägt einen veralteten Kommentar ("spatial/temporal/… intentionally omitted in v0.1"), der nicht mehr zum aktuellen `MD.cff-schema.yaml` passt — das Schema unterstützt `spatial`/`temporal`/`heritage_object`/`technique` inzwischen offiziell als optionale Felder, und das Root-`MD.cff` (nicht `example_fdo/MD.cff`) ist das Beispiel, das zum Schema passt. Kein Handlungsbedarf für uns, aber A1s alter Befund war missverständlich | 2026-09-07, Korrektur |
 | `description` fehlt bei `--local` (kein CLI-Flag) bzw. manchmal bei `--sketchfab` | kein neues `--description`-Flag in `fetch` — `mdcff` erzeugt einen deterministischen Fallback-Satz aus `title`/`creator`, keine Warnung dafür (Chat-Entscheidung 2026-09-07, siehe S5) | 2026-09-07 |
-| `publishers` (Pflichtfeld in MD.cff) | kein Default (auch nicht LEIZA) — `--publisher-label` ist für `mdcff` Pflicht, fehlt es, bricht der Schritt hart ab (nicht nur Warning/--strict) (Chat-Entscheidung 2026-09-07, siehe S5) | 2026-09-07 |
+| `publishers` (Pflichtfeld in MD.cff) | kein Default (auch nicht LEIZA) — `--publisher-label` ist für `mdcff` Pflicht, fehlt es, bricht der Schritt hart ab (nicht nur Warning/--strict). **Ergänzt 2026-09-07 (2):** Fallback auf `FDO_PUBLISHER_LABEL`/`FDO_PUBLISHER_ID` Env-Vars (Muster `BLENDER_BIN`), weiterhin kein Code-Default | 2026-09-07 |
+| Wer ist `publisher` in der Praxis? | **immer** "Research Squirrel Engineers Network" (`https://github.com/Research-Squirrel-Engineers`), **nie** LEIZA — fast alle Modelle sind Fremdmaterial (Citizen Scientists, Museen) oder Flos private Arbeit, LEIZA hat institutionell keinen Anspruch darauf. Das LEIZA-Beispiel im ersten S5-Patch war ein irreführendes Platzhalterbeispiel in der Doku, kein realer Anwendungsfall | 2026-09-07 (2) |
 | `source_info.json`'s `todo_placeholders` blockieren `mdcff`? | Vorschlag aus 2026-09-04 bestätigt als **Nein** — nur `Warning:`-Nachricht wie bei `fetch`, harter Abbruch erst mit `--strict` (Chat-Entscheidung 2026-09-07, siehe S5) | 2026-09-07, bestätigt (widerruft den Vorschlag von 2026-09-04) |
 | `MD.cff.id`-Platzhalter beim `--strict`-Mechanismus | bewusst **außerhalb** der Warning/--strict-Logik oben — die Zeile "PID wird von diesem Repo nicht vergeben" (2026-09-03) ist ein Dauerzustand, kein vor Release behebbares TODO, ein `--strict`-CI-Lauf darf daran nie scheitern | 2026-09-07 |
 | `keywords` in MD.cff | fixer Default (3D data / Cultural Heritage, dieselben Wikidata-IDs wie `fdo-squirrel`s Root-`MD.cff`), nicht CLI-konfigurierbar — dieses Repo packt immer dieselbe Domäne | 2026-09-07 |
 | CITATION.cff `authors`-Format | CFF-*entity* (`{name, website}`), nicht *person* (`{given-names, family-names}`) — `creator` ist ein beliebiger Anzeigename (Sketchfab-Username o.ä.), der sich nicht zuverlässig splitten lässt | 2026-09-07 |
-| CITATION.cff `license`-Feld | nur gesetzt, wenn `licence` wie eine SPDX-ID aussieht (Heuristik, kein echter SPDX-Abgleich) — Sketchfabs `licence`-Wert ist oft ein menschenlesbares Label ("CC Attribution") statt einer SPDX-ID, CFFs `license`-Feld verlangt aber SPDX | 2026-09-07 |
+| CITATION.cff `license`-Feld | nur gesetzt, wenn `licence` wie eine SPDX-ID aussieht (Heuristik, kein echter SPDX-Abgleich) — Sketchfabs `licence`-Wert ist oft ein menschenlesbares Label ("CC Attribution") statt einer SPDX-ID, CFFs `license`-Feld verlangt aber SPDX. **Ergänzt 2026-09-07 (2):** für `--sketchfab`-Läufe hat `SKETCHFAB_LICENSE_SLUG_TO_SPDX` (`license.slug` aus `sketchfab_meta.json`) Vorrang vor der Heuristik — zuverlässiger, da Sketchfabs Slugs (`cc-by`, `cc0`, …) direkt auf echte SPDX-IDs abbildbar sind; die Heuristik bleibt Fallback für `--local` | 2026-09-07 |
+| `sketchfab_meta.json` (S2-Audit-Ablage) auch inhaltlich nutzen? | ja — `mdcff` liest sie jetzt für Anreicherung (`tags`/`categories` → `keywords`, `license.slug`, `publishedAt`/`createdAt`, `viewerUrl`, `faceCount`/`vertexCount`), statt `source_info.json`s S2/S3/S4/S5-Vertrag um weitere Felder zu erweitern — hält den Vertrag stabil, `mdcff` zieht sich Zusatzfelder bei Bedarf selbst, optional (fehlt für `--local` immer, kein Fehler) | 2026-09-07 (2) |
+| `user.profileUrl` in `step_fetch.py` | Bug behoben: die API liefert die Profil-URL fertig mit, `step_fetch.py` hat sie vorher immer selbst aus `username` zusammengebaut. `profileUrl` hat jetzt Vorrang, die selbstgebaute Form bleibt nur Fallback | 2026-09-07 (2) |
 
 ### A5 Was in welchem Chat hochgeladen wird
 
@@ -811,6 +814,73 @@ braucht sie nicht) laufen lassen:
 generierten `MD.cff` passen (S4 lief hier nicht real mit, nur leere
 Platzhalterdateien als Existenz-Marker für das Vollständigkeits-Gate).
 
+### Nachtrag 2026-09-07 (2) — Sketchfab-Metadaten-Anreicherung, Publisher per Env-Var, `profileUrl`-Fix
+
+[#nachtrag-2026-09-07-2--sketchfab-metadaten-anreicherung-publisher-per-env-var-profileurl-fix](#nachtrag-2026-09-07-2--sketchfab-metadaten-anreicherung-publisher-per-env-var-profileurl-fix)
+
+Nach dem `mdcff`-Commit kam im Chat die berechtigte Frage auf, welche
+Metadaten Sketchfabs Data API v3 überhaupt liefert und ob `publisher`
+daraus ableitbar wäre. Recherche (offizielle Docs + ein echtes
+Produktionscode-Beispiel, das `metadata.user.profileUrl`/
+`metadata.user.displayName`/`metadata.license.{label,url}` fürs
+Attributions-Rendering benutzt) bestätigt das Feldset, das
+`fetch_metadata()` in `step_fetch.py` schon abgreift, plus einiges, das
+bisher ungenutzt blieb:
+
+- **Kein Publisher-Konzept auf der Model-Resource.** Sketchfab liefert nur
+  `user` (den Uploader) — kein institutionelles "Publisher"-Feld. Das
+  bestätigt die bestehende Trennung `creator` (Uploader, aus der API) vs.
+  `publisher` (wer das FDO-Paket veröffentlicht, hier fast nie derselbe):
+  praktisch alle Modelle in diesem Repo sind Fremdmaterial (Citizen
+  Scientists wie Anne-Karoline Distel, Museen) oder Flos private Arbeit —
+  LEIZA hat institutionell keinen Anspruch, das zu publizieren. Publisher
+  ist daher **immer** "Research Squirrel Engineers Network"
+  (`https://github.com/Research-Squirrel-Engineers`), nie LEIZA — das
+  LEIZA-Beispiel im ursprünglichen S5-Patch war ein irreführendes
+  Platzhalterbeispiel, kein tatsächlicher Anwendungsfall (siehe A4).
+- **`user.profileUrl` kommt schon in der API-Antwort mit** — `step_fetch.py`
+  hat die Profil-URL bisher selbst aus `username` zusammengebaut, obwohl
+  die API sie fertig liefert. Gefixt: `profileUrl` hat jetzt Vorrang, die
+  selbstgebaute Form bleibt nur Fallback.
+- **`sketchfab_meta.json` (S2, bisher nur Audit-Ablage) wird jetzt von
+  `mdcff` mitgelesen** (`load_sketchfab_meta()`/`extract_enrichment()`),
+  statt zusätzliche Felder in `source_info.json`s Vertrag aufzunehmen — der
+  Vertrag zwischen S2 und S3/S4/S5 bleibt dadurch stabil, `mdcff` zieht
+  sich die Zusatzfelder bei Bedarf selbst. Neu genutzt: `tags[]`/
+  `categories[]` → zusätzliche `keywords` (neben den festen Defaults),
+  `license.slug` → echtes SPDX-Mapping für CITATION.cff (`cc-by` →
+  `CC-BY-4.0` usw., `st`/`ed` bewusst ohne Mapping, da nicht SPDX-fähig —
+  zuverlässiger als die bisherige Label-Heuristik, die für `--local` als
+  Fallback bleibt), `publishedAt`/`createdAt` → `date_released`/
+  `date_created` in MD.cff und `date-released` in CITATION.cff,
+  `viewerUrl` → bevorzugt gegenüber der user-eingegebenen `source_url` für
+  `related_resources`/CITATION.cff `url`, `faceCount`/`vertexCount` →
+  `technique.processing`-Notiz.
+- **`technique.acquisition.method`** wird jetzt auch für `--local`-Läufe
+  aus `--source-note` befüllt (z. B. "KiriEngine, 180 photos, 2026-03") —
+  vorher lag das Feld nur in `source_info.json`, nie in `MD.cff`.
+- **`--publisher-label`/`--publisher-id` fallen jetzt auf
+  `FDO_PUBLISHER_LABEL`/`FDO_PUBLISHER_ID` zurück** (Muster:
+  `--blender-bin`/`BLENDER_BIN`) — kein Code-Default, aber kein Eintippen
+  bei jedem Lauf mehr nötig, wenn die Env-Var einmal gesetzt ist.
+
+Getestet: dieselbe Govan-2-Fixture wie im ersten S5-Patch, jetzt zusätzlich
+mit einer realistischen `sketchfab_meta.json` (Felder nach der oben
+verifizierten API-Struktur, mangels Netzwerkzugriff auf `api.sketchfab.com`
+im Sandkasten von Hand gebaut, keine erfundenen Werte für real geprüfte
+Feldnamen). Ergebnis erneut gegen `fdo-squirrel`s echten
+`ingest.metadata_ingest.validate_against_schema()` **valide** — inklusive
+`technique`/`date_created`/`date_released`/angereicherter `keywords`.
+Determinismus (zweimal laufen lassen, `md5sum`) weiterhin gegeben.
+`--local`-Fall ohne `sketchfab_meta.json` weiterhin unverändert lauffähig
+(kein Absturz, nur ohne Anreicherung). CLI-Flag sticht Env-Var wie erwartet
+(Standard-argparse-Verhalten, kein Sonderfall nötig).
+
+**Nicht geprüft:** echte Live-Daten von `api.sketchfab.com` (im Sandkasten
+kein Zugriff auf die Sketchfab-API selbst, nur auf öffentliche
+Such-/Doku-Treffer) — die Fixture-Feldnamen sind gegen echten
+Produktionscode verifiziert, aber kein echter API-Roundtrip.
+
 ---
 
 ## Teil D — Offene Punkte
@@ -851,14 +921,13 @@ Platzhalterdateien als Existenz-Marker für das Vollständigkeits-Gate).
 - **Schema-Drift im `fdo-squirrel`-Repo** war ein Fehlalarm, siehe A4
   (2026-09-07, „Schema-Drift-Befund war ein Fehlalarm") — kein offener
   Punkt mehr, nur zur Erinnerung falls upstream danach gefragt wird.
-- **`spatial`/`temporal`/`heritage_object`/`technique`/`identifiers`/
-  `date_created`/`date_released`/`version`** bleiben in `MD.cff` für S5
-  vorerst ungenutzt (optionale Felder, keine verlässliche Datenquelle aus
-  `source_info.json`). Mögliche spätere Erweiterung: Sketchfabs
-  `publishedAt`/`createdAt` (falls in `sketchfab_meta.json` vorhanden) nach
-  `date_created`/`date_released` übernehmen; `technique.processing` als
-  freier Text für `--source-note` (aktuell nur in `source_info.json`
-  vorhanden, nicht in `MD.cff`).
+- **`spatial`/`temporal`/`heritage_object`/`identifiers`/`version`** bleiben
+  in `MD.cff` für S5 vorerst ungenutzt (optionale Felder, keine verlässliche
+  Datenquelle aus `source_info.json`/`sketchfab_meta.json`).
+  **Erledigt 2026-09-07 (2):** `date_created`/`date_released` (aus
+  Sketchfabs `createdAt`/`publishedAt`) und `technique` (aus
+  `--source-note` bzw. `faceCount`/`vertexCount`) sind jetzt umgesetzt, war
+  vorher hier als offener Punkt notiert.
 - **`identifiers[]` nach Zenodo-Upload:** wenn `id` manuell durch die echte
   DOI ersetzt wird (siehe `ID_PLACEHOLDER` in `step_mdcff.py`), sollte
   vermutlich auch ein `identifiers`-Eintrag `{scheme: doi, value: ...}`
@@ -866,5 +935,26 @@ Platzhalterdateien als Existenz-Marker für das Vollständigkeits-Gate).
   Nacharbeitsschritt, nicht automatisiert.
 - **`--publisher-label`/`--publisher-id` sind Singular** (ein Publisher,
   kein wiederholbares Flag) — reicht für den aktuellen Anwendungsfall
-  (immer LEIZA als Publisher-Aufruf). Falls künftig mehrere Publisher
-  gebraucht werden, Flag-Design dann erweitern.
+  (immer "Research Squirrel Engineers Network"). Falls künftig mehrere
+  Publisher gebraucht werden, Flag-Design dann erweitern.
+- **Mehrere Sketchfab-URLs auf einmal fetchen (Batch)?** Im Chat
+  2026-09-07 aufgeworfen — noch nicht umgesetzt, siehe Nachtrag
+  2026-09-07 (2) und die Chat-Diskussion dazu. Kernproblem: `fetch` schreibt
+  `data/raw/source_info.json` als **eine** Datei auf oberster Ebene
+  (Singleton, kein `data/raw/<slug>/source_info.json`), jeder weitere
+  `--sketchfab`/`--local`-Lauf überschreibt sie. Batch-Fetch bräuchte
+  entweder (a) einen Shell-Loop über den bestehenden Einzel-Workflow
+  (`fetch` → `python main.py` je URL, keine Repo-Änderung nötig) oder
+  (b) einen echten Umbau auf `data/raw/<slug>/source_info.json` pro Modell
+  plus einen neuen Batch-Schritt/-Flag, der über mehrere Slugs iteriert —
+  das berührt aber den S2/S3/S4/S5-Vertrag, den alle vier bereits
+  erledigten Schritte gemeinsam nutzen, kein reiner S5-Zusatz. Entscheidung
+  noch offen.
+- **Testkandidaten "Holy Wells" (Wikidata-Query, 2026-09-07 im Chat
+  geteilt):** ~20 weitere Sketchfab-3D-Modelle irischer Holy Wells
+  (Wikidata-Items mit `3d`-Property auf Sketchfab-URLs, u. a. Saint
+  Augustine's Well/Q122189562, Kenny's Well/Q114439798, St Leonard's
+  Well/Q126454422, …) — zusätzlich zu Donaghmore/Govan 2 als reale
+  Testfälle für künftige `--sketchfab`-Läufe, sobald Netzwerk/Blender/Nexus
+  verfügbar sind. Liste liegt nur im Chat-Verlauf, nicht in diesem Dokument
+  dupliziert.

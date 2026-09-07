@@ -12,40 +12,36 @@ Offline (PRIMER.md A3): validates against schemas/md_cff/MD.cff-schema.yaml,
 a vendored copy of fdo-squirrel's schema (see that file's own header for
 provenance/refresh instructions), not a live fetch.
 
-Decisions confirmed in this step (PRIMER.md S5, see PRIMER.md for the dated
-A4 rows):
-- `description` (schema-required): if `fetch` didn't supply one (Sketchfab
-  metadata empty, or --local which has no --description flag at all), this
-  step writes a deterministic fallback sentence from title/creator rather
-  than adding a new fetch-time TODO field. Silent, not a Warning -- that is
-  the point of choosing a fallback over another CLI-gated placeholder.
-- `publishers` (schema-required): no default (e.g. no silent LEIZA
-  fallback). `--publisher-label` is mandatory for this step; missing it is
-  a hard failure (return False), same tier as a missing nxsbuild binary in
-  step_nexus.py -- not folded into the soft-Warning/--strict mechanism
-  below, because unlike title/creator/licence there is no sensible
-  placeholder value that still describes *who* is publishing.
-- `source_info.json`'s own `todo_placeholders` (title/creator/licence
-  missing at fetch time) stay a soft Warning here, exactly like fetch's own
-  pattern: `python main.py` still succeeds, `--strict` (CI) fails. This
-  confirms the "Vorschlag" PRIMER.md A4 had flagged for this step.
-- `id` (schema-required, global identifier): always a fixed placeholder
-  string, deliberately outside the Warning/--strict mechanism above --
-  PRIMER.md A4 already decided this repo never assigns a PID, so unlike the
-  above this is not a fixable-before-release gap and must not fail --strict
-  CI runs that will never have a DOI to give it.
-- `keywords`: a small fixed default (3D data / Cultural Heritage, matching
-  fdo-squirrel's own root MD.cff Wikidata IDs) rather than CLI-configurable
-  -- this whole repo's output is always in that category.
-- CITATION.cff `authors`: written as a CFF *entity* ({name, website}), not
-  a *person* ({given-names, family-names}) -- source_info's `creator` is an
-  arbitrary display string (Sketchfab username, or free text for --local)
-  that cannot be reliably split into given/family names.
-- CITATION.cff `license`: only written if the licence string looks like a
-  plausible SPDX identifier (CFF's `license` key is SPDX-only, unlike
-  MD.cff's free-text `license.label`); source_info's `licence` is often a
-  human-readable label (e.g. Sketchfab's "CC Attribution"), not guaranteed
-  SPDX-valid, so this is a best-effort heuristic, not a validator.
+Decisions confirmed 2026-09-07 (PRIMER.md S5, see PRIMER.md for the dated
+A4 rows -- kept short here, the "why" lives there, not duplicated per line):
+- `description`: deterministic fallback sentence from title/creator if
+  `fetch` didn't supply one, silent (no Warning).
+- `publishers`: no hardcoded default. `--publisher-label` falls back to the
+  `FDO_PUBLISHER_LABEL` environment variable (same pattern as
+  `--blender-bin`/`BLENDER_BIN`); still hard-fails if neither is set --
+  this repo's actual publisher is "Research Squirrel Engineers Network",
+  essentially never LEIZA, since almost every model packaged here belongs
+  to an external creator (citizen scientists, museums) or is Flo's own
+  private work -- LEIZA has no institutional claim to publish it.
+- `source_info.json`'s own `todo_placeholders` stay a soft Warning here
+  (confirms the PRIMER.md A4 2026-09-04 proposal).
+- `id`: always a fixed placeholder, outside the Warning/--strict mechanism.
+- `keywords`: fixed defaults (3D data / Cultural Heritage) merged with
+  Sketchfab tags/categories when available (see `load_sketchfab_meta()`).
+- CITATION.cff `authors`: CFF *entity* ({name, website}), not *person*.
+- CITATION.cff/MD.cff `license`: Sketchfab's `license.slug` (e.g. "cc-by")
+  is mapped to a real SPDX id via `SKETCHFAB_LICENSE_SLUG_TO_SPDX` when
+  available -- far more reliable than guessing from the human label, which
+  is all a `--local` run ever has, where the old heuristic still applies.
+
+`load_sketchfab_meta()` reads `data/raw/sketchfab_meta.json` -- the full
+raw Data API v3 response `fetch` (S2) already stashes for every
+`--sketchfab` run, previously write-only (audit trail only). This step is
+the first to actually read it back, pulling in whatever `source_info.json`
+doesn't carry: tags, categories, `license.slug`, `publishedAt`/`createdAt`,
+the canonical `viewerUrl`, `faceCount`/`vertexCount`. Absent for `--local`
+runs (no such file) or if fetch predates this step -- every field below is
+optional and MD.cff/CITATION.cff still build without it, just leaner.
 """
 from __future__ import annotations
 
@@ -62,7 +58,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import yaml
 from jsonschema import Draft202012Validator
 
-from py.fdo_3d_packager_utils import DIST, REPO_ROOT, load_source_info, write_yaml
+from py.fdo_3d_packager_utils import DATA_RAW, DIST, REPO_ROOT, load_source_info, read_json, write_yaml
 
 SCHEMA_PATH = REPO_ROOT / "schemas" / "md_cff" / "MD.cff-schema.yaml"
 
@@ -72,22 +68,50 @@ SCHEMA_PATH = REPO_ROOT / "schemas" / "md_cff" / "MD.cff-schema.yaml"
 # Warning/--strict mechanism below.
 ID_PLACEHOLDER = "TODO: id not set (pending Zenodo DOI, see PRIMER.md A4)"
 
-# PRIMER.md S5 (this step): fixed default, matches fdo-squirrel's own root
+# PRIMER.md S5 (this step): fixed baseline, matches fdo-squirrel's own root
 # MD.cff Wikidata IDs for the same concepts -- see module docstring.
 DEFAULT_KEYWORDS = [
     {"label": "3D data", "id": "http://www.wikidata.org/entity/Q229370"},
     {"label": "Cultural Heritage", "id": "http://www.wikidata.org/entity/Q110840"},
 ]
 
-# Loose heuristic for "looks like an SPDX license identifier" (CITATION.cff
-# `license` key only, see module docstring) -- not a real SPDX list lookup,
-# just enough to reject obviously-human labels like "CC Attribution" or a
-# "TODO: ..." placeholder.
+# Sketchfab's Creative Commons license slugs (Data API v3 `license.slug`)
+# mapped to real SPDX identifiers, for CITATION.cff's `license` key (SPDX
+# only, unlike MD.cff's free-text `license.label`). "st" (paid "Standard"
+# license) and "ed" ("Editorial", not freely reusable) have no SPDX
+# equivalent and are deliberately absent -- CITATION.cff gets no `license`
+# line for those, not a wrong one.
+SKETCHFAB_LICENSE_SLUG_TO_SPDX = {
+    "cc-by": "CC-BY-4.0",
+    "cc-by-sa": "CC-BY-SA-4.0",
+    "cc-by-nd": "CC-BY-ND-4.0",
+    "cc-by-nc": "CC-BY-NC-4.0",
+    "cc-by-nc-sa": "CC-BY-NC-SA-4.0",
+    "cc-by-nc-nd": "CC-BY-NC-ND-4.0",
+    "cc0": "CC0-1.0",
+}
+
+# Loose fallback heuristic for "looks like an SPDX license identifier"
+# (only used when SKETCHFAB_LICENSE_SLUG_TO_SPDX doesn't apply, i.e.
+# --local runs) -- not a real SPDX list lookup, just enough to reject
+# obviously-human labels like "CC Attribution" or a "TODO: ..." placeholder.
 _SPDX_LIKE_RE = re.compile(r"^[A-Za-z][A-Za-z0-9]*(?:[.+-][A-Za-z0-9]+)*$")
+
+# First 10 characters of an ISO-8601 timestamp, if they look like a date --
+# Sketchfab's publishedAt/createdAt come as full timestamps
+# ("2026-03-15T10:22:31.123456Z"), MD.cff/CFF dates want just YYYY-MM-DD.
+_ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}")
 
 
 def _looks_like_spdx(value: str) -> bool:
     return bool(_SPDX_LIKE_RE.match(value)) and not value.upper().startswith("TODO")
+
+
+def _iso_date(value: str | None) -> str | None:
+    if not value:
+        return None
+    match = _ISO_DATE_RE.match(value)
+    return match.group(0) if match else None
 
 
 def _entity(label: str, entity_id: str | None) -> dict:
@@ -101,6 +125,60 @@ def _entity(label: str, entity_id: str | None) -> dict:
     return out
 
 
+def load_sketchfab_meta(info: dict) -> dict | None:
+    """The raw Sketchfab Data API v3 response `fetch` (S2) already saved to
+    data/raw/sketchfab_meta.json for `--sketchfab` runs (audit trail --
+    see step_fetch.py:run_sketchfab). Returns None for `--local` runs (no
+    such file) or if it's missing/unreadable for any other reason -- every
+    caller treats this as optional enrichment, never a requirement."""
+    if info.get("input_mode") != "sketchfab":
+        return None
+    path = DATA_RAW / "sketchfab_meta.json"
+    if not path.exists():
+        return None
+    try:
+        return read_json(path)
+    except (ValueError, OSError):
+        return None
+
+
+def extract_enrichment(meta: dict | None) -> dict:
+    """Pulls the fields MD.cff/CITATION.cff can use out of a raw Sketchfab
+    model response that source_info.json doesn't already carry: tags,
+    categories, license slug, dates, canonical viewer URL, mesh stats.
+    Every key is optional in the return value -- callers use `.get()`."""
+    if not meta:
+        return {}
+
+    tags = [t.get("name") for t in (meta.get("tags") or []) if t.get("name")]
+    categories = [c.get("name") for c in (meta.get("categories") or []) if c.get("name")]
+    license_info = meta.get("license") or {}
+
+    out: dict = {}
+    if tags or categories:
+        # Case-insensitive de-dup, first-seen order, tags before categories.
+        seen: set[str] = set()
+        merged = []
+        for label in tags + categories:
+            key = label.strip().lower()
+            if key and key not in seen:
+                seen.add(key)
+                merged.append(label.strip())
+        out["keyword_labels"] = merged
+    if license_info.get("slug"):
+        out["license_slug"] = license_info["slug"]
+    if _iso_date(meta.get("publishedAt")):
+        out["date_released"] = _iso_date(meta.get("publishedAt"))
+    if _iso_date(meta.get("createdAt")):
+        out["date_created"] = _iso_date(meta.get("createdAt"))
+    if meta.get("viewerUrl"):
+        out["viewer_url"] = meta["viewerUrl"]
+    if isinstance(meta.get("faceCount"), int) and isinstance(meta.get("vertexCount"), int):
+        out["face_count"] = meta["faceCount"]
+        out["vertex_count"] = meta["vertexCount"]
+    return out
+
+
 def build_description(info: dict) -> str:
     description = (info.get("description") or "").strip()
     if description:
@@ -111,7 +189,25 @@ def build_description(info: dict) -> str:
     )
 
 
-def build_md_cff(info: dict, publisher_label: str, publisher_id: str | None) -> dict:
+def build_technique(info: dict, enrichment: dict) -> dict | None:
+    """Optional MD.cff `technique` block: `--local`'s free-text
+    `--source-note` (acquisition method, e.g. "KiriEngine, 180 photos,
+    2026-03") as `acquisition.method`, and/or a processing note built from
+    Sketchfab's mesh stats. Returns None (key omitted entirely) if neither
+    is available -- an empty `technique: {}` would be noise, not data."""
+    technique: dict = {}
+    source_note = info.get("source_note")
+    if source_note:
+        technique["acquisition"] = {"method": source_note}
+    if "face_count" in enrichment:
+        technique["processing"] = (
+            f"Sketchfab upload: {enrichment['face_count']:,} faces, "
+            f"{enrichment['vertex_count']:,} vertices."
+        )
+    return technique or None
+
+
+def build_md_cff(info: dict, enrichment: dict, publisher_label: str, publisher_id: str | None) -> dict:
     md_cff: dict = {
         "md_cff_version": "0.1",
         "fdo_type": "fdo:3DDataFDO",
@@ -121,18 +217,35 @@ def build_md_cff(info: dict, publisher_label: str, publisher_id: str | None) -> 
         "publishers": [_entity(publisher_label, publisher_id)],
         "creators": [_entity(info["creator"], info.get("creator_profile"))],
         "license": _entity(info["licence"], info.get("licence_url")),
-        "keywords": [dict(k) for k in DEFAULT_KEYWORDS],
     }
-    source_url = info.get("source_url")
+    if enrichment.get("date_created"):
+        md_cff["date_created"] = enrichment["date_created"]
+    if enrichment.get("date_released"):
+        md_cff["date_released"] = enrichment["date_released"]
+
+    keywords = [dict(k) for k in DEFAULT_KEYWORDS]
+    seen = {k["label"].lower() for k in keywords}
+    for label in enrichment.get("keyword_labels", []):
+        if label.lower() not in seen:
+            seen.add(label.lower())
+            keywords.append({"label": label})
+    md_cff["keywords"] = keywords
+
+    source_url = enrichment.get("viewer_url") or info.get("source_url")
     if source_url:
         md_cff["related_resources"] = [{
             "relation": "isDerivedFrom",
             "target": _entity(f"Source: {info['title']}", source_url),
         }]
+
+    technique = build_technique(info, enrichment)
+    if technique:
+        md_cff["technique"] = technique
+
     return md_cff
 
 
-def build_citation_cff(info: dict) -> dict:
+def build_citation_cff(info: dict, enrichment: dict) -> dict:
     author: dict = {"name": info["creator"]}
     if info.get("creator_profile"):
         author["website"] = info["creator_profile"]
@@ -144,11 +257,24 @@ def build_citation_cff(info: dict) -> dict:
         "type": "dataset",
         "authors": [author],
     }
-    licence = info.get("licence") or ""
-    if _looks_like_spdx(licence):
-        citation["license"] = licence
-    if info.get("source_url"):
-        citation["url"] = info["source_url"]
+
+    spdx = SKETCHFAB_LICENSE_SLUG_TO_SPDX.get(enrichment.get("license_slug", ""))
+    if not spdx and _looks_like_spdx(info.get("licence") or ""):
+        spdx = info["licence"]
+    if spdx:
+        citation["license"] = spdx
+
+    if enrichment.get("date_released"):
+        citation["date-released"] = enrichment["date_released"]
+
+    keywords = enrichment.get("keyword_labels")
+    if keywords:
+        citation["keywords"] = list(keywords)
+
+    source_url = enrichment.get("viewer_url") or info.get("source_url")
+    if source_url:
+        citation["url"] = source_url
+
     return citation
 
 
@@ -181,24 +307,30 @@ def run(args: argparse.Namespace) -> tuple[bool, str]:
     publisher_label = getattr(args, "publisher_label", None)
     if not publisher_label:
         return False, (
-            "publisher label required: pass --publisher-label "
-            "(+ optional --publisher-id), no default (PRIMER.md A4)"
+            "publisher label required: pass --publisher-label, or set the "
+            "FDO_PUBLISHER_LABEL environment variable (+ optional "
+            "--publisher-id / FDO_PUBLISHER_ID) -- no hardcoded default "
+            "(PRIMER.md A4)"
         )
     publisher_id = getattr(args, "publisher_id", None)
 
-    md_cff = build_md_cff(info, publisher_label, publisher_id)
+    enrichment = extract_enrichment(load_sketchfab_meta(info))
+
+    md_cff = build_md_cff(info, enrichment, publisher_label, publisher_id)
     schema_errors = validate_md_cff(md_cff)
     if schema_errors:
         # A schema-invalid MD.cff coming out of this function is a bug in
         # this step, not a data-quality issue -- fail hard either way.
         return False, "generated MD.cff failed schema validation:\n" + "\n".join(schema_errors)
 
-    citation_cff = build_citation_cff(info)
+    citation_cff = build_citation_cff(info, enrichment)
 
     write_yaml(md_cff, out_dir / "MD.cff")
     write_yaml(citation_cff, out_dir / "CITATION.cff")
 
     message = f"wrote {slug} -> MD.cff, CITATION.cff"
+    if enrichment:
+        message += f" (enriched from sketchfab_meta.json: {', '.join(sorted(enrichment))})"
     if info["todo_placeholders"]:
         message = (
             "Warning: " + message + " -- source_info.json has unresolved "
@@ -210,9 +342,13 @@ def run(args: argparse.Namespace) -> tuple[bool, str]:
 
 
 if __name__ == "__main__":
+    import os
+
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--publisher-label", help="MD.cff publishers[0].label. Required, no default (PRIMER.md A4).")
-    ap.add_argument("--publisher-id", help="MD.cff publishers[0].id, e.g. a ROR URL. Optional.")
+    ap.add_argument("--publisher-label", default=os.environ.get("FDO_PUBLISHER_LABEL"),
+                     help="MD.cff publishers[0].label. Required (or set FDO_PUBLISHER_LABEL), no hardcoded default (PRIMER.md A4).")
+    ap.add_argument("--publisher-id", default=os.environ.get("FDO_PUBLISHER_ID"),
+                     help="MD.cff publishers[0].id, e.g. a GitHub/ROR URL. Optional (or set FDO_PUBLISHER_ID).")
     ok, message = run(ap.parse_args())
     print(f"[mdcff] {message}")
     raise SystemExit(0 if ok else 1)

@@ -9,7 +9,7 @@
     python main.py --strict            warnings become errors (this is what CI runs)
     python main.py --only fetch --sketchfab "https://sketchfab.com/3d-models/..."
     python main.py --only fetch --local ./scans/rathealy_kiriengine.glb --title "..." --creator "..." --licence "..."
-    python main.py --only mdcff --publisher-label "LEIZA" --publisher-id "https://ror.org/03yrm5c26"
+    python main.py --only mdcff --publisher-label "Research Squirrel Engineers Network" --publisher-id "https://github.com/Research-Squirrel-Engineers"
 
 See PRIMER.md for what each step does and why. Steps are implemented one
 module per step under py/, each independently runnable
@@ -104,12 +104,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
     ap.add_argument("--nxsbuild-ram", type=int, default=None, metavar="MB",
                      help="nxsbuild -r <MB>: RAM budget, nxsbuild's own default is 2000 (nexus step).")
 
-    # Publisher for MD.cff (mdcff step, S5). No default (PRIMER.md A4,
-    # confirmed in S5) -- always pass explicitly.
-    ap.add_argument("--publisher-label",
-                     help="MD.cff publishers[0].label. Required for mdcff, no default (mdcff step).")
-    ap.add_argument("--publisher-id",
-                     help="MD.cff publishers[0].id, e.g. a ROR URL. Optional (mdcff step).")
+    # Publisher for MD.cff (mdcff step, S5). No hardcoded default
+    # (PRIMER.md A4) -- falls back to FDO_PUBLISHER_LABEL/FDO_PUBLISHER_ID
+    # env vars (same pattern as --blender-bin/BLENDER_BIN), still required
+    # one way or the other.
+    ap.add_argument("--publisher-label", default=os.environ.get("FDO_PUBLISHER_LABEL"),
+                     help="MD.cff publishers[0].label. Required for mdcff (or set FDO_PUBLISHER_LABEL env var), no hardcoded default (mdcff step).")
+    ap.add_argument("--publisher-id", default=os.environ.get("FDO_PUBLISHER_ID"),
+                     help="MD.cff publishers[0].id, e.g. a GitHub/ROR URL (or set FDO_PUBLISHER_ID env var). Optional (mdcff step).")
     return ap
 
 

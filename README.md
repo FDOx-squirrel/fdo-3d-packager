@@ -115,14 +115,20 @@ Once `nexus` has run, `mdcff` picks up `data/raw/source_info.json` and
 has no default (there is no sensible one to guess):
 
 ```cmd
-python main.py --only mdcff --publisher-label "LEIZA - Leibniz-Zentrum fuer Archaeologie" --publisher-id "https://ror.org/03yrm5c26"
+python main.py --only mdcff --publisher-label "Research Squirrel Engineers Network" --publisher-id "https://github.com/Research-Squirrel-Engineers"
 ```
 
-`--publisher-label` is required; `--publisher-id` (e.g. a ROR URL) is
-optional. Missing `dist/<slug>/model.obj`/`model.nxs`/`model.nxz` (i.e.
-`convert`/`nexus` haven't run yet) or a missing `--publisher-label` both
-fail the step outright. `MD.cff`'s `id` field is always a fixed
-`"TODO: ..."` placeholder -- this repo never assigns a PID, see
+`--publisher-label` is required; `--publisher-id` (e.g. a GitHub/ROR URL)
+is optional. Both fall back to the `FDO_PUBLISHER_LABEL`/
+`FDO_PUBLISHER_ID` environment variables (same pattern as `--blender-bin`/
+`BLENDER_BIN`), so you don't have to retype them on every run -- there is
+still no hardcoded default (see `PRIMER.md` A4 for why: almost every model
+packaged here belongs to an external creator or is private work, so
+"Research Squirrel Engineers Network" is the realistic answer, essentially
+never LEIZA). Missing `dist/<slug>/model.obj`/`model.nxs`/`model.nxz` (i.e.
+`convert`/`nexus` haven't run yet) or a missing publisher (neither flag nor
+env var) both fail the step outright. `MD.cff`'s `id` field is always a
+fixed `"TODO: ..."` placeholder -- this repo never assigns a PID, see
 `PRIMER.md` A4 -- fill in the real DOI by hand after a Zenodo upload. If
 `source_info.json` still has unresolved `title`/`creator`/`licence`
 placeholders from `fetch`, `mdcff` still writes the files but prints a
@@ -130,6 +136,17 @@ placeholders from `fetch`, `mdcff` still writes the files but prints a
 `description` is auto-generated from title/creator when `fetch` didn't
 supply one (this happens for every `--local` run, since it has no
 `--description` flag).
+
+For `--sketchfab` runs, `mdcff` also reads back `data/raw/sketchfab_meta.json`
+(the full API response `fetch` already saved) to enrich the output beyond
+what `source_info.json` carries: Sketchfab tags/categories become extra
+`keywords`, `license.slug` maps to a real SPDX id for CITATION.cff (more
+reliable than Sketchfab's human-readable license label), `publishedAt`/
+`createdAt` become `date_released`/`date_created`, and face/vertex counts
+become a short `technique.processing` note. None of this is required --
+`--local` runs (no `sketchfab_meta.json`) still work, just without the
+enrichment; `--source-note` (`--local`'s free-text acquisition note) always
+lands in `technique.acquisition.method` regardless of input mode.
 
 ## External requirements (not pip-installable)
 
