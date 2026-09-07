@@ -1174,7 +1174,7 @@ Dateien, Exit 0.
 
 ### Erledigt 2026-09-07
 
-[#erledigt-2026-09-07-4](#erledigt-2026-09-07-4)
+[#erledigt-2026-09-07-6](#erledigt-2026-09-07-6)
 
 Gegen echte S6-Outputs verifiziert, nicht gegen Fixtures: die beiden real
 gefetchten/konvertierten/gebauten `dist/<slug>.zip` aus S6 (`govan-2.zip`,
@@ -1251,6 +1251,66 @@ siehe Substanz oben). Ebenfalls offen (neuer Teil-D-Punkt): `python main.py
 --only build_fdo --all-slugs` scheitert in einem Checkout ohne `data/raw/`
 (wie diesem hier) an `main.py`s eigener `discover_slugs()`, bevor
 `build_fdo` überhaupt läuft -- `--slug` explizit umgeht das, siehe Teil D.
+
+### Nachtrag 2026-09-07 (2) — erster echter Produktions-Rundlauf bei Flo, gesamte Kette S0–S7 bestätigt
+
+[#nachtrag-2026-09-07-2--erster-echter-produktions-rundlauf-bei-flo-gesamte-kette-s0s7-bestätigt](#nachtrag-2026-09-07-2--erster-echter-produktions-rundlauf-bei-flo-gesamte-kette-s0s7-bestätigt)
+
+Erster echter Lauf der kompletten Kette in einem Aufruf, auf Flos
+Windows-Maschine, committed:
+
+```cmd
+python main.py --from fetch --sketchfab "https://sketchfab.com/3d-models/govan-2-b9dc56bfc1d342f6b4da3281e6629c07" --sketchfab "https://sketchfab.com/3d-models/freshford-st-lachtains-well-low-poly-ae1e1f4daa7d433dbbf076407134e81e" --nxsbuild-bin "C:\Nexus_43\nxsbuild.exe" --nxscompress-bin "C:\Nexus_43\nxscompress.exe" --publisher-label "Research Squirrel Engineers Network" --publisher-id "https://github.com/Research-Squirrel-Engineers"
+```
+
+`fetch`→`convert`→`nexus`→`mdcff`→`bundle`→`build_fdo` liefen für **beide**
+Slugs fehlerfrei durch -- erstmals inklusive `build_fdo` in einem einzigen
+`--from fetch`-Aufruf, nicht mehr einzeln nachgestellt:
+
+| Slug | convert | nexus | mdcff | bundle | build_fdo | Gesamt |
+|---|---|---|---|---|---|---|
+| govan-2 | 50,00s | 24,12s | 0,47s | 6,27s | 16,41s | ~97s |
+| freshford-st-lachtains-well-low-poly | 60,12s | 6,72s | 0,11s | 2,38s | 6,34s | ~76s |
+
+`build_fdo`s eigener Anteil (16,41s bei Govan 2, deutlich mehr als
+`nexus`/`mdcff`/`bundle` zusammen) erklärt sich aus dem nächsten Punkt.
+
+**Präzisierung des "vier vs. fünf generierte Distributionen"-Befunds aus
+dem vorherigen Abschnitt:** bei Flo zeigt das Log `RDF updated with 5
+generated-file distribution(s)`, nicht vier wie im Sandkasten, und zusätzlich
+`✔ Mermaid diagram rendered as high-res JPG: ...fdo_overview.jpg` -- eine
+Zeile, die im Sandkasten als `⚠ Mermaid image render skipped: mmdc failed`
+auftauchte (kein Chrome/Puppeteer dort verfügbar). Gegen das von Flo
+hochgeladene `govan-2-fdo-bundle.zip` bestätigt: **37** `dcat:Distribution`-
+Einträge (32 Bundle-Inhalt + 5 generiert: `fdo-metadata.ttl`,
+`rdf_modelling_report.json`, `rdf_modelling_report.html`,
+`fdo_overview.mermaid`, **zusätzlich** `fdo_overview.jpg`), gegenüber 36
+(4 generiert) im Sandkasten-Lauf. Die Menge der generierten Distributionen
+ist damit selbst umgebungsabhängig (ob `mmdc`/Chrome verfügbar ist), nicht
+nur ihre Hashes/IRIs wie im vorherigen Nachtrag beschrieben -- verschärft
+den dortigen Befund, ändert aber nichts an der Einordnung: weiterhin
+`fdo-squirrel`s eigener Determinismus, nicht dieser Schritt.
+
+**Klassifikations-Befund (siehe oben) an der echten Produktions-Bundle
+reproduziert, nicht nur an der Sandkasten-Fixture:** identische vier
+Lücken (`.mtl` → `data`, `data/textures/*` → `documentation` statt
+`auxiliary`, `viewer/*.html`/`.js`/`.css`/`LICENSE.txt` → `data`,
+`viewer/skins/**` → `documentation` über die Bild-Extension-Regel) --
+zusätzlich jetzt auch `fdo_overview.jpg`/`rdf_modelling_report.json`
+selbst mit `documentation` beziehungsweise `rdf_modelling_report.html`/
+`fdo_overview.mermaid`/`fdo-metadata.ttl` mit `data` klassifiziert (gleiche
+Fallback-Logik, trifft auch die von `fdo-squirrel` selbst neu erzeugten
+Dateien). Bestätigt: der S6/S7-Befund ist kein Sandkasten-Artefakt, gilt
+identisch am echten Bundle. `viewer/skins/dark/lightcontrol.png`/
+`lightcontrol_on.png` tragen im echten Bundle die korrekten Namen (S6s
+Icon-Fix, Nachtrag 2026-09-07 (2), bestätigt vorhanden).
+
+**Damit ist die gesamte S0–S7-Kette erstmals in einem einzigen Aufruf,
+gegen zwei echte Sketchfab-Modelle, End-to-End real bestätigt** -- vorher
+immer einzeln oder in Teilstrecken verifiziert (S2-S5 in Nachtrag (7) von
+S8, S6 separat in S6s eigenen Nachträgen, S7 gegen bereits committete
+Bundles statt gegen einen frischen `fetch`). Kein Fehler, keine Warnung in
+keinem der beiden Läufe.
 
 ---
 
