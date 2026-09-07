@@ -1786,128 +1786,57 @@ funktioniert (POSIX-Runner). `PATCH-README.md` entsprechend korrigiert:
 kein `chmod` mehr in den Windows-Anleitungen, stattdessen die
 `.cmd`-Wrapper, jeder Befehl als Einzeiler.
 
+**Erster echter Actions-Lauf bei Flo: grün.** Damit ist auch der letzte in
+der S9-`PATCH-README.md` offen gelassene Punkt ("der echte Actions-Lauf
+selbst wurde hier nicht geprüft, keine Möglichkeit, Actions aus diesem
+Sandkasten anzustoßen") geschlossen -- die lokale Simulation in diesem
+Chat (venv, `pip install`, Fakes, `--strict`) und der echte
+`ubuntu-latest`-Runner kommen zum selben Ergebnis. S9 ist damit
+vollständig real bestätigt, nicht nur simuliert.
+
 ---
 
 ## Teil D — Offene Punkte
 
+*(Aufgeräumt 2026-09-07: vollständig erledigte Punkte wurden hier entfernt,
+nicht nur mit "Erledigt" markiert -- die Details bleiben in Teil C
+(Nachtrag-Historie je Schritt) und Teil A4 (Beschlüsse) erhalten. Diese
+Liste enthält ab jetzt nur, was tatsächlich noch offen ist.)*
+
 - **Schwester-Repo für Software-FDOs.** Angekündigt 2026-09-03: ein Repo,
-  das aus einem Git-Link ein `fdo:SoftwareFDO`-Paket baut, mit „viel
-  Automatismus". Vorschlag in A4: eigenes Repo (`fdo-software-packager`),
-  nicht Zusammenlegung mit `fdo-3d-packager`. Wenn es soweit ist: S5
-  (`mdcff`), S6 (`bundle`) und S7 (`build_fdo`) aus diesem Repo als Vorlage
-  kopieren (nicht importieren, A3), dabei `fdo_type` und die
-  domänenspezifischen `distributions[]`-Rollen anpassen. Kein Schritt in
-  diesem Repo, bis das Schwester-Repo tatsächlich startet.
-- **`main.py --all-slugs` setzt `data/raw/` voraus, auch wenn nur
-  `build_fdo` (S7) ausgewählt ist.** `main.py`s eigene `--all-slugs`-
-  Auflösung ruft `discover_slugs()` (data/raw/-basiert) auf, *bevor* eine
-  Schrittauswahl überhaupt läuft -- selbst wenn diese Auswahl nur `build_fdo`
-  ist, das laut `resolve_bundle_slug()` (S7) gar kein `data/raw/` braucht.
-  Betrifft nur `--all-slugs`; `--slug <name>` explizit funktioniert
-  unverändert (siehe S7-Erledigt-Abschnitt, real gegen genau diesen Fall
-  geprüft: `dist/`-Bundles ohne `data/raw/`-Gegenstück). Kein Fix hier --
-  würde `main.py`s Schrittauswahl-Modell ändern (welche Discovery-Funktion
-  je nach `selection` greift), etwas Grundsätzlicheres als S7 selbst, daher
-  als eigener Punkt notiert statt hier nebenbei entschieden.
-  **Erledigt 2026-09-07 (S9):** `_discover_slugs_for(selection)` in
-  `main.py` löst genau diesen einen Fall (`selection == ["build_fdo"]`)
-  über `discover_bundle_slugs()` auf, alles andere weiterhin über
-  `discover_slugs()` -- kein größeres Redesign nötig, siehe S9 in Teil C.
-- **Wie wird `fdo-squirrel` in S7 eingebunden? Erledigt 2026-09-07 (S7):**
-  Pip aus GitHub, gepinnt auf `fdo-squirrel@504b7af`, Konsolenskript per
-  `sysconfig.get_path("scripts")` aufgerufen (Variante von Option (a), aber
-  Subprocess-Aufruf des installierten Konsolenskripts statt direkter
-  `ingest.*`-Import) — wortwörtlich das in `fdo-squirrel-registry`s S8
-  bereits erprobte Muster, kopiert statt neu entschieden (A3). Details und
-  Begründung in S7 (Teil C).
-- **`classification_rules.yaml`-Lücke für Viewer, `.mtl` und
-  `data/textures/` — an echten Daten bestätigt, siehe S7.** Nicht mehr nur
-  vermutet: `fdo-squirrel` bricht bei unklassifizierten Dateien **nicht**
-  ab, sondern vergibt still die Fallback-Rolle `data` — bestätigt an den
-  echten S6-Bundles (Govan 2, Freshford), nicht an Fixtures. Betroffen sind
-  `.mtl` (keine Regel), `viewer/*.html`/`.js`/`.css`/`LICENSE.txt` (keine
-  Regel) und `data/textures/*` (Regel matcht nur ein Top-Level-`textures/`-
-  Präfix, nicht `data/textures/`, deshalb `documentation` statt
-  `auxiliary`). A4-Beschluss unverändert: Fix gehört nach
-  `fdo-squirrel/fdo/classification_rules.yaml`, nicht hierher — offener
-  Punkt bleibt bestehen, jetzt aber als konkreter, datenbelegter Patch-
-  Vorschlag für einen separaten `fdo-squirrel`-Chat (A5: ein Repo pro
-  Chat), nicht mehr als offene Frage.
-- **`MD.cff.id` nach Zenodo-Upload:** manuell nachtragen, oder ein späterer
-  Schritt (`S7`?), der das automatisiert? Zenodo-Upload selbst ist ohnehin
-  außerhalb dieses Repos (kein Netzwerk-Schreibzugriff hier vorgesehen).
-- **Eigenes menschenlesbares Begleit-YAML** (wie das `metadata.yaml" aus dem
-  Sketchfab-Prototyp) zusätzlich zu `MD.cff` führen, oder reicht `MD.cff`
-  allein als Quelle der Wahrheit? Tendenz: nur `MD.cff`, um keine zwei
-  Wahrheiten zu pflegen — aber nicht entschieden.
-- **Schema-Drift im `fdo-squirrel`-Repo** war ein Fehlalarm, siehe A4
-  (2026-09-07, „Schema-Drift-Befund war ein Fehlalarm") — kein offener
-  Punkt mehr, nur zur Erinnerung falls upstream danach gefragt wird.
-- **`spatial`/`temporal`/`heritage_object`/`identifiers`/`version`** bleiben
-  in `MD.cff` für S5 vorerst ungenutzt (optionale Felder, keine verlässliche
+  das aus einem Git-Link ein `fdo:SoftwareFDO`-Paket baut. Vorschlag in A4:
+  eigenes Repo (`fdo-software-packager`), nicht Zusammenlegung mit
+  `fdo-3d-packager` -- S5 (`mdcff`), S6 (`bundle`) und S7 (`build_fdo`) aus
+  diesem Repo als Vorlage kopieren (nicht importieren, A3), dabei
+  `fdo_type` und die domänenspezifischen `distributions[]`-Rollen
+  anpassen. Kein Schritt in diesem Repo, bis das Schwester-Repo tatsächlich
+  startet.
+- **`classification_rules.yaml`-Lücke in `fdo-squirrel`** -- `.mtl`,
+  `viewer/*.html`/`.js`/`.css`/`LICENSE.txt` und `data/textures/*` fallen
+  alle auf die generische Rolle `data`/`documentation` zurück statt
+  `model`/`auxiliary`, an echten Daten bestätigt (S7). Fix gehört nach
+  `fdo-squirrel/fdo/classification_rules.yaml`, separater Chat (A4/A5).
+- **`fdo-squirrel`s Crosswalk verlangt `creators[].id` entgegen dem
+  eigenen Schema**, das `id` dort ausdrücklich optional nennt
+  (`idLabelEntityOptionalId`) -- trifft jeden echten `--local`-Fetch ohne
+  `--creator-profile` (S9-Fund). Gleiches Muster: Fix gehört nach
+  `fdo-squirrel`, separater Chat.
+- **Zenodo-Nachbereitung bleibt Handarbeit** (Chat-Entscheidung
+  2026-09-07): `MD.cff.id` durch die echte DOI ersetzen und einen
+  `identifiers[]`-Eintrag (`{scheme: doi, value: ...}`, Muster
+  `example_fdo/MD.cff`) ergänzen, beides manuell nach dem Upload.
+  Automatisierung zurückgestellt, bis `fdo-squirrel-md-generator` als
+  interaktiver Zwischenschritt steht.
+- **Eigenes menschenlesbares Begleit-YAML** zusätzlich zu `MD.cff`? Tendenz
+  weiterhin: nein, nur eine Quelle der Wahrheit -- nicht endgültig
+  entschieden.
+- **`spatial`/`temporal`/`heritage_object`/`identifiers`/`version`**
+  bleiben in `MD.cff` ungenutzt (optionale Felder, keine verlässliche
   Datenquelle aus `source_info.json`/`sketchfab_meta.json`).
-  **Erledigt 2026-09-07 (2):** `date_created`/`date_released` (aus
-  Sketchfabs `createdAt`/`publishedAt`) und `technique` (aus
-  `--source-note` bzw. `faceCount`/`vertexCount`) sind jetzt umgesetzt, war
-  vorher hier als offener Punkt notiert.
-- **`identifiers[]` nach Zenodo-Upload:** wenn `id` manuell durch die echte
-  DOI ersetzt wird (siehe `ID_PLACEHOLDER` in `step_mdcff.py`), sollte
-  vermutlich auch ein `identifiers`-Eintrag `{scheme: doi, value: ...}`
-  ergänzt werden (Muster: `example_fdo/MD.cff`) — aktuell manueller
-  Nacharbeitsschritt, nicht automatisiert.
 - **`--publisher-label`/`--publisher-id` sind Singular** (ein Publisher,
-  kein wiederholbares Flag) — reicht für den aktuellen Anwendungsfall
-  (immer "Research Squirrel Engineers Network"). Falls künftig mehrere
-  Publisher gebraucht werden, Flag-Design dann erweitern.
-- **Mehrere Sketchfab-URLs auf einmal fetchen (Batch)?** **Erledigt
-  2026-09-07 (S8):** echter Umbau (Option b), nicht der Shell-Loop —
-  `data/raw/<slug>/source_info.json` pro Modell, `--sketchfab` wiederholbar,
-  `--slug`/`--all-slugs` in `main.py`. Details siehe S8 in Teil C.
-- **Testkandidaten "Holy Wells" (Wikidata-Query, 2026-09-07 im Chat
-  geteilt):** ~20 weitere Sketchfab-3D-Modelle irischer Holy Wells
-  (Wikidata-Items mit `3d`-Property auf Sketchfab-URLs, u. a. Saint
-  Augustine's Well/Q122189562, Kenny's Well/Q114439798, St Leonard's
-  Well/Q126454422, …) — zusätzlich zu Donaghmore/Govan 2 als reale
-  Testfälle für künftige `--sketchfab`-Läufe, sobald Netzwerk/Blender/Nexus
-  verfügbar sind. Liste liegt nur im Chat-Verlauf, nicht in diesem Dokument
-  dupliziert. **Vier davon bereits real erfolgreich gefetcht** (Nachtrag
-  2026-09-07 (5)): `callan-st-augustines-well-re-upload`,
-  `freshford-st-lachtains-well-low-poly`, `ballymakeera-st-abbans-grave`,
-  `cork-ogham-stone-ciic-83-ucc-14` — alle fünf inzwischen real durch
-  den kompletten `fetch`→`convert`→`nexus`→`mdcff`-Rundlauf gelaufen,
-  siehe Nachtrag 2026-09-07 (7).
-- **`bundle`/`build_fdo` (S6/S7) kennen `--slug` noch nicht** — sind aber
-  ohnehin noch S1-Stubs (`nothing_to_do()`), betrifft niemanden, bis S6
-  tatsächlich angegangen wird. Beim Implementieren von S6 `--slug`/
-  `getattr(args, "slug", None)` nach demselben Muster wie S3–S5 ergänzen.
-  **Erledigt 2026-09-07 (S6):** `bundle` hat jetzt `--slug`, gleiches
-  Muster wie S3–S5 (siehe S6 in Teil C). `build_fdo` (S7) ist weiterhin
-  ein reiner Stub, betrifft also weiterhin niemanden — der Punkt bleibt
-  bis S7 offen, nur für `bundle` erledigt.
-  **Erledigt 2026-09-07 (S7):** `build_fdo` hat jetzt ebenfalls `--slug`,
-  gleiches Muster (`load_source_info(getattr(args, "slug", None))`) —
-  Punkt vollständig erledigt, keine der beiden Schritte betrifft das noch.
-- **Echter Batch-Fetch gegen reale, herunterladbare Modelle: erledigt**
-  (Nachtrag 2026-09-07 (7)) — 5/5 Modelle real gefetcht, konvertiert,
-  komprimiert und beschrieben, kein Fehler.
-- **S6 (`bundle`) implementiert und gegen Fixtures verifiziert** (siehe S6
-  in Teil C, Erledigt 2026-09-07) — nicht mehr der offene Punkt. Nächster
-  offener Punkt ist jetzt **S7** (`build_fdo`, Rundlauf durch
-  `fdo-squirrel`) — und, davor, Flos echter Lauf von S6 gegen Govan 2 +
-  Freshford auf der Windows-Maschine (siehe S6-Erledigt-Abschnitt für den
-  genauen Befehl), um `viewer/index.html` wirklich im Browser zu prüfen.
-  **Erledigt 2026-09-07 (S7):** Flos echter S6-Lauf ist gelaufen (S6-
-  Nachtrag (2)/(3), Viewer im Browser bestätigt) und S7 selbst ist jetzt
-  auch implementiert und gegen die beiden echten Bundles verifiziert
-  (siehe S7 in Teil C) — kein offener Punkt mehr aus dieser Zeile. Was S7
-  neu aufgemacht hat (die `classification_rules.yaml`-Lücke), steht als
-  eigener Punkt oben.
-- **3DHOP-Viewer zeigte kein sichtbares Modell im Browser — geklärt,
-  kein Repo-Bug.** Echter Lauf bei Flo (S6, Nachtrag 2026-09-07 (2)/(3)):
-  nach dem Icon-Fix lud `model.nxz` vollständig, Canvas blieb trotzdem
-  leer. Vergleichstest mit dem unveränderten offiziellen 3DHOP-Demo zeigte
-  identisches Symptom → kein Fehler in diesem Repo. Ursache: Firefox/
-  ANGLE/Direct3D11-spezifischer WebGL-Bug auf Flos Intel-UHD-Graphics-GPU
-  (`about:support` bestätigt Hardwarebeschleunigung, kein Software-
-  Fallback) — in Chrome funktioniert derselbe ZIP/Viewer korrekt. Kein
-  Handlungsbedarf in diesem Repo; Details siehe S6-Nachtrag (3).
+  kein wiederholbares Flag) -- reicht für den aktuellen Anwendungsfall
+  (immer "Research Squirrel Engineers Network"). Bei Bedarf später
+  erweitern.
+- **Weitere "Holy Wells"-Testkandidaten** (Wikidata-Query, 2026-09-07 im
+  Chat geteilt, Liste nicht in diesem Dokument dupliziert) -- vier davon
+  bereits real gefetcht (S8), der Rest offen für künftige Läufe.
