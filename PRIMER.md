@@ -1757,6 +1757,35 @@ werden (z. B. für S7-artige manuelle Verifikationen wie in dessen eigenem
 Erledigt-Abschnitt) oder bewusst draußen bleiben, ist weiterhin offen --
 für CI ist es aber irrelevant geworden.
 
+### Nachtrag 2026-09-07 (2) — `chmod` auf Windows real gescheitert, `.cmd`-Wrapper ergänzt
+
+[#nachtrag-2026-09-07-2--chmod-auf-windows-real-gescheitert-cmd-wrapper-ergänzt](#nachtrag-2026-09-07-2--chmod-auf-windows-real-gescheitert-cmd-wrapper-ergänzt)
+
+Echter Befund bei Flo, nicht im Sandkasten aufgefallen (der läuft POSIX):
+die `PATCH-README.md`-Anleitung für lokales Testen vor dem Push riet zu
+`chmod +x .github/ci-fixtures/fake_*.py` -- auf `cmd.exe` (Referenzplattform,
+A3) gibt es `chmod` schlicht nicht. Grundsätzlicher als nur der fehlende
+Befehl: selbst mit einem Exec-Bit-Äquivalent würde `subprocess.run([...],
+check=True)` (ohne `shell=True`, wie `step_convert.py`/`step_nexus.py` es
+schon immer aufrufen) eine reine `.py`-Datei unter Windows gar nicht
+direkt starten können -- `CreateProcess` konsultiert keine
+Datei-Assoziationen, anders als ein Doppelklick im Explorer.
+
+**Fix:** drei neue `.cmd`-Wrapper unter `.github/ci-fixtures/`
+(`fake_blender.cmd`/`fake_nxsbuild.cmd`/`fake_nxscompress.cmd`), je drei
+Zeilen (`@echo off` + Kommentar + `python "%~dp0fake_blender.py" %*`) --
+`.cmd`/`.bat` sind der eine Windows-Dateityp, den `CreateProcess` auch ohne
+`shell=True` direkt über `cmd.exe` startet, `%~dp0` findet die
+gleichnamige `.py` unabhängig vom Arbeitsverzeichnis, `%*` reicht alle
+Argumente unverändert durch (inklusive des führenden `-b --python <script>
+--`, das `fake_blender.py`s eigenes `parse_args()` ohnehin ignoriert).
+**Nur für lokales Testen auf Windows relevant** -- die eigentliche CI
+(GitHub-hosted `ubuntu-latest`) bleibt unverändert bei den `.py`-Dateien
+und ihrem eigenen `chmod +x`-Schritt in `build.yml`, der dort korrekt
+funktioniert (POSIX-Runner). `PATCH-README.md` entsprechend korrigiert:
+kein `chmod` mehr in den Windows-Anleitungen, stattdessen die
+`.cmd`-Wrapper, jeder Befehl als Einzeiler.
+
 ---
 
 ## Teil D — Offene Punkte
