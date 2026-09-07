@@ -186,6 +186,11 @@ Eigenschaften, an denen sich ein Lauf messen lässt:
 | CITATION.cff `license`-Feld | nur gesetzt, wenn `licence` wie eine SPDX-ID aussieht (Heuristik, kein echter SPDX-Abgleich) — Sketchfabs `licence`-Wert ist oft ein menschenlesbares Label ("CC Attribution") statt einer SPDX-ID, CFFs `license`-Feld verlangt aber SPDX. **Ergänzt 2026-09-07 (2):** für `--sketchfab`-Läufe hat `SKETCHFAB_LICENSE_SLUG_TO_SPDX` (`license.slug` aus `sketchfab_meta.json`) Vorrang vor der Heuristik — zuverlässiger, da Sketchfabs Slugs (`cc-by`, `cc0`, …) direkt auf echte SPDX-IDs abbildbar sind; die Heuristik bleibt Fallback für `--local` | 2026-09-07 |
 | `sketchfab_meta.json` (S2-Audit-Ablage) auch inhaltlich nutzen? | ja — `mdcff` liest sie jetzt für Anreicherung (`tags`/`categories` → `keywords`, `license.slug`, `publishedAt`/`createdAt`, `viewerUrl`, `faceCount`/`vertexCount`), statt `source_info.json`s S2/S3/S4/S5-Vertrag um weitere Felder zu erweitern — hält den Vertrag stabil, `mdcff` zieht sich Zusatzfelder bei Bedarf selbst, optional (fehlt für `--local` immer, kein Fehler) | 2026-09-07 (2) |
 | `user.profileUrl` in `step_fetch.py` | Bug behoben: die API liefert die Profil-URL fertig mit, `step_fetch.py` hat sie vorher immer selbst aus `username` zusammengebaut. `profileUrl` hat jetzt Vorrang, die selbstgebaute Form bleibt nur Fallback | 2026-09-07 (2) |
+| Mehrere Sketchfab-URLs übergeben | wiederholbares `--sketchfab URL --sketchfab URL2 ...` (`action="append"`), nicht `--sketchfab-list FILE` | 2026-09-07 (3) |
+| Rundlauf nach Batch-Fetch automatisch? | ja — `--all-slugs` führt die gewählte Schritt-Auswahl für jeden gefundenen Slug aus (nicht nur `fetch` batchen, S3–S7 bleiben nicht zwingend Einzelaufrufe) | 2026-09-07 (3) |
+| Slug-Auswahl bei mehreren gefetchten Modellen | `--slug`-Flag mit Auto-Fallback, wenn genau ein Slug existiert; bei mehreren ohne `--slug` ein Fehler mit Liste der gefundenen Slugs, kein Raten | 2026-09-07 (3) |
+| `data/raw/source_info.json`: Singleton oder pro Slug? | pro Slug (`data/raw/<slug>/source_info.json`) — folgt zwingend aus der Batch-Entscheidung, sonst überschreibt ein zweiter `fetch`-Aufruf den ersten, bevor S3–S5 ihn gesehen haben. Kein Migrationspfad für alte Top-Level-Dateien, `data/raw/` ist regenerierbar (A3) | 2026-09-07 (3) |
+| Metadaten-Overrides (`--title` etc.) bei Batch-`--sketchfab` | harter Fehler, nicht stillschweigend ignoriert, wenn mehr als eine `--sketchfab`-URL zusammen mit `--title`/`--creator`/`--creator-profile`/`--licence`/`--licence-url`/`--source-note` übergeben wird — ein Wert kann nicht für mehrere unterschiedliche Modelle gleichzeitig richtig sein | 2026-09-07 (3) |
 
 ### A5 Was in welchem Chat hochgeladen wird
 
@@ -219,6 +224,7 @@ Nicht anwendbar in S1 — dieses Repo veröffentlicht selbst keine RDF-IRIs
 | S5 | `mdcff`-Schritt: `MD.cff` + `CITATION.cff` schreiben, gegen Schema validieren | fdo-3d-packager | S2, S4 | erledigt 2026-09-07 |
 | S6 | `bundle`-Schritt: `dist/<slug>.zip` im `fdo-squirrel`-Layout | fdo-3d-packager | S3, S4, S5 | offen |
 | S7 | `dist/<slug>.zip` durch `fdo-squirrel` schicken, `fdo-metadata.ttl` als Beleg (Muster: registry S8) | fdo-3d-packager | S6 | offen |
+| S8 | Batch-Fetch (`--sketchfab` wiederholbar) + Multi-Slug-Infrastruktur (`data/raw/<slug>/source_info.json`, `--slug`, `--all-slugs`) | fdo-3d-packager | S2–S5 | erledigt 2026-09-07 |
 
 S3 und S4 sind technisch unabhängig von S5 und können in beliebiger
 Reihenfolge bzw. parallel in Angriff genommen werden; S5 braucht die
@@ -883,6 +889,121 @@ Produktionscode verifiziert, aber kein echter API-Roundtrip.
 
 ---
 
+## S8 — Batch-Fetch & Multi-Slug-Infrastruktur
+
+[#s8--batch-fetch--multi-slug-infrastruktur](#s8--batch-fetch--multi-slug-infrastruktur)
+
+**Ziel:** mehrere Sketchfab-URLs in einem `fetch`-Aufruf holen können
+(Anlass: die "Holy Wells"-Testliste, 2026-09-07 im Chat geteilt, ~20
+Modelle) und danach den Rundlauf (`convert`→`nexus`→`mdcff`→…) für jedes
+geholte Modell einzeln oder gesammelt anstoßen können.
+
+**Substanz** (Chat-Entscheidungen 2026-09-07, siehe A4):
+
+- **`--sketchfab` ist jetzt wiederholbar** (`action="append"` in
+  `main.py` und `step_fetch.py`s eigenem `__main__`-Block):
+  `--sketchfab URL1 --sketchfab URL2 ...` statt einer Datei- oder
+  Listen-Syntax.
+- **`data/raw/source_info.json` ist kein Singleton mehr.** Liegt jetzt
+  unter `data/raw/<slug>/source_info.json`, direkt neben
+  `sketchfab_meta.json` (ebenfalls dorthin verschoben) und dem
+  Modell-File — sonst hätte ein zweiter `fetch`-Aufruf die Handoff-Daten
+  des ersten überschrieben, bevor S3–S5 sie je gesehen hätten. `model_file`
+  bleibt wie bisher relativ zu `data/raw/` (also weiterhin
+  `<slug>/<datei>`), nur der Ort von `source_info.json` selbst ändert
+  sich — keine Änderung an `DATA_RAW / info["model_file"]` in
+  `step_convert.py`/`step_nexus.py` nötig.
+- **Kein Migrationspfad für alte Top-Level-`data/raw/source_info.json`.**
+  `data/raw/` ist laut A3 ohnehin regenerierbar (read-only Rohdaten, aber
+  aus `fetch` neu erzeugbar) — einfach `fetch` erneut laufen lassen statt
+  eine alte Datei von Hand zu verschieben.
+- **`fdo_3d_packager_utils.py`: `discover_slugs()`/`resolve_slug()`** neu
+  — jeder Slug mit `data/raw/<slug>/source_info.json` zählt als
+  "gefetcht". `resolve_slug(explicit)`: `--slug` gewinnt immer; ohne
+  `--slug` wird bei genau einem gefundenen Slug automatisch dieser
+  verwendet (unverändertes Verhalten für den bisherigen
+  Ein-Modell-Workflow); bei mehreren wird **nicht geraten**, sondern ein
+  Fehler mit der Liste der gefundenen Slugs geworfen.
+- **`--slug`** ist jetzt ein CLI-Flag von `convert`/`nexus`/`mdcff` (S3–S5,
+  in `main.py` und den jeweiligen `__main__`-Blöcken).
+- **`--all-slugs`** (nur `main.py`, kein Schritt-eigenes Flag): führt die
+  gewählte Schritt-Auswahl (`--only`/`--from`/`--skip`/Default) für jeden
+  gefundenen Slug nacheinander aus, mit einer `=== slug: <name> ===`
+  Trennzeile pro Modell. Guards: `--all-slugs` + `--slug` gleichzeitig ist
+  ein Fehler (widersprüchlich); `--all-slugs` mit `fetch` in der Auswahl
+  ist ein Fehler (`fetch` erzeugt Slugs, braucht also keinen — separat
+  aufrufen). `--strict` bezieht sich weiterhin auf den **gesamten** Lauf
+  über alle Slugs (eine Warnung bei irgendeinem Slug reicht für den
+  Abbruch am Ende), nicht pro Slug.
+- **Batch-Fetch, Teilfehler-Verhalten:** ein einzelner fehlschlagender
+  URL bricht den Batch nicht ab (jeder wird einzeln versucht, Fehler
+  abgefangen); Rückgabe ist `False` nur, wenn **alle** URLs fehlschlagen,
+  sonst `True` mit `Warning:`-Präfix, wenn nicht alle geklappt haben —
+  gleiches Muster wie überall sonst in diesem Repo (Warning blockiert nur
+  `--strict`). Bei genau einer `--sketchfab`-URL bleibt die Meldung exakt
+  wie vor diesem Umbau (kein `"1/1 model(s)"`-Rauschen für den nach wie
+  vor häufigsten Fall).
+- **Metadaten-Overrides (`--title`/`--creator`/`--creator-profile`/
+  `--licence`/`--licence-url`/`--source-note`) sind bei mehr als einer
+  `--sketchfab`-URL ein harter Fehler**, nicht nur ignoriert — ein Wert
+  könnte sonst fälschlich auf alle Modelle angewendet werden, obwohl jedes
+  längst seine eigenen Sketchfab-Metadaten mitbringt. Der Fehler kommt
+  *vor* jedem Netzwerkzugriff.
+- **Reihenfolge-Fix in `_fetch_one_sketchfab()`:** `sketchfab_meta.json`
+  und `source_info.json` werden jetzt **nach** `copy_model_with_siblings()`
+  geschrieben, nicht davor — die Funktion räumt `data/raw/<slug>/` per
+  `rmtree()` leer, bevor sie es neu befüllt; vorher geschriebene Dateien
+  im selben Verzeichnis wären dabei mitgelöscht worden. Nur beim
+  Verschieben auf den per-Slug-Pfad aufgefallen, betraf den alten
+  Top-Level-Pfad nicht (der lag außerhalb von `data/raw/<slug>/`).
+
+### Erledigt 2026-09-07 (4)
+
+[#erledigt-2026-09-07-4](#erledigt-2026-09-07-4)
+
+Getestet (kein Blender/Nexus im Sandkasten, aber `fetch --local` und
+`mdcff` sind reines Python und liefen echt, nicht nur gegen Fixtures):
+
+- Echter `fetch --local`-Lauf schreibt jetzt tatsächlich nach
+  `data/raw/<slug>/source_info.json` statt `data/raw/source_info.json`.
+- `mdcff` ohne `--slug` bei genau einem gefetchten Modell: Auto-Detect
+  funktioniert unverändert.
+- Zweiten Slug per zweitem `fetch --local` angelegt: `mdcff` ohne `--slug`
+  bricht jetzt korrekt mit der "multiple slugs found"-Meldung ab (exit 1,
+  keine geratene Auswahl); mit `--slug <name>` funktioniert es gezielt.
+- `--all-slugs --only mdcff` lief über beide Slugs durch (eine
+  Sketchfab-artige Fixture mit `sketchfab_meta.json`-Anreicherung, eine
+  `--local`-artige ohne) — beide `MD.cff` **valide gegen `fdo-squirrel`s
+  echten Validator**, die angereicherte mit `technique`/`date_created`/
+  `date_released`/zusätzlichen `keywords`, die andere ohne, kein Crash.
+- Guards bestätigt: `--all-slugs --slug X` → Fehler; `--all-slugs --only
+  fetch` → Fehler; `--all-slugs --dry-run` zeigt Plan **und** Slug-Liste;
+  `--all-slugs` ohne jeden gefetchten Slug → sauberer Fehler statt
+  Absturz.
+- `api.sketchfab.com` ist vom Sandkasten aus zwar über `curl`/`requests`
+  erreichbar, liefert aber `403` mit `x-deny-reason: host_not_allowed` im
+  Header — bestätigt, dass es der Egress-Proxy blockiert, nicht ein echter
+  API-Fehler. Damit gegen zwei erfundene UIDs geprüft: mehrere
+  `--sketchfab`-URLs ohne Overrides werden unabhängig voneinander
+  versucht (kein Absturz beim ersten Fehler), beide schlagen fehl → `False`
+  mit beiden Fehlermeldungen aufgelistet, wie vorgesehen. Mit Overrides +
+  mehreren URLs: Abbruch **vor** dem ersten Netzwerkzugriff, wie
+  vorgesehen. Einzelne `--sketchfab`-URL + `--title`: kein
+  Batch-Guard-Fehler, normaler (netzwerkbedingter) Fehlschlag wie vor
+  diesem Umbau.
+- Determinismus (`mdcff` zweimal, `md5sum`) und `--list`/`--dry-run`
+  (weiterhin ohne `yaml`/`jsonschema`-Import ohne echten Schritt-Aufruf)
+  weiterhin bestätigt.
+
+**Nicht geprüft:** ein echter Batch-Fetch mit tatsächlich herunterladbaren
+Modellen (Netzwerkzugriff auf `api.sketchfab.com` vom Sandkasten aus
+blockiert, siehe oben) — die Schleifen-/Fehlerbehandlungslogik ist geprüft,
+aber nicht der komplette Download-Pfad für mehrere echte Modelle
+hintereinander. `bundle`/`build_fdo` (S6/S7) kennen `--slug`/`--all-slugs`
+noch nicht, sind aber ohnehin noch S1-Stubs.
+
+---
+
 ## Teil D — Offene Punkte
 
 - **Schwester-Repo für Software-FDOs.** Angekündigt 2026-09-03: ein Repo,
@@ -937,19 +1058,10 @@ Produktionscode verifiziert, aber kein echter API-Roundtrip.
   kein wiederholbares Flag) — reicht für den aktuellen Anwendungsfall
   (immer "Research Squirrel Engineers Network"). Falls künftig mehrere
   Publisher gebraucht werden, Flag-Design dann erweitern.
-- **Mehrere Sketchfab-URLs auf einmal fetchen (Batch)?** Im Chat
-  2026-09-07 aufgeworfen — noch nicht umgesetzt, siehe Nachtrag
-  2026-09-07 (2) und die Chat-Diskussion dazu. Kernproblem: `fetch` schreibt
-  `data/raw/source_info.json` als **eine** Datei auf oberster Ebene
-  (Singleton, kein `data/raw/<slug>/source_info.json`), jeder weitere
-  `--sketchfab`/`--local`-Lauf überschreibt sie. Batch-Fetch bräuchte
-  entweder (a) einen Shell-Loop über den bestehenden Einzel-Workflow
-  (`fetch` → `python main.py` je URL, keine Repo-Änderung nötig) oder
-  (b) einen echten Umbau auf `data/raw/<slug>/source_info.json` pro Modell
-  plus einen neuen Batch-Schritt/-Flag, der über mehrere Slugs iteriert —
-  das berührt aber den S2/S3/S4/S5-Vertrag, den alle vier bereits
-  erledigten Schritte gemeinsam nutzen, kein reiner S5-Zusatz. Entscheidung
-  noch offen.
+- **Mehrere Sketchfab-URLs auf einmal fetchen (Batch)?** **Erledigt
+  2026-09-07 (S8):** echter Umbau (Option b), nicht der Shell-Loop —
+  `data/raw/<slug>/source_info.json` pro Modell, `--sketchfab` wiederholbar,
+  `--slug`/`--all-slugs` in `main.py`. Details siehe S8 in Teil C.
 - **Testkandidaten "Holy Wells" (Wikidata-Query, 2026-09-07 im Chat
   geteilt):** ~20 weitere Sketchfab-3D-Modelle irischer Holy Wells
   (Wikidata-Items mit `3d`-Property auf Sketchfab-URLs, u. a. Saint
@@ -958,3 +1070,14 @@ Produktionscode verifiziert, aber kein echter API-Roundtrip.
   Testfälle für künftige `--sketchfab`-Läufe, sobald Netzwerk/Blender/Nexus
   verfügbar sind. Liste liegt nur im Chat-Verlauf, nicht in diesem Dokument
   dupliziert.
+- **`bundle`/`build_fdo` (S6/S7) kennen `--slug` noch nicht** — sind aber
+  ohnehin noch S1-Stubs (`nothing_to_do()`), betrifft niemanden, bis S6
+  tatsächlich angegangen wird. Beim Implementieren von S6 `--slug`/
+  `getattr(args, "slug", None)` nach demselben Muster wie S3–S5 ergänzen.
+- **Echter Batch-Fetch gegen reale, herunterladbare Modelle** ist noch
+  nicht geprüft (Netzwerkzugriff auf `api.sketchfab.com` vom Sandkasten
+  aus blockiert, `x-deny-reason: host_not_allowed`) — nächster sinnvoller
+  Schritt außerhalb dieses Chats: `python main.py --only fetch --sketchfab
+  ... --sketchfab ... [...]` mit einer Handvoll der Holy-Wells-URLs gegen
+  einen echten Token laufen lassen, dann `--all-slugs` für den vollen
+  Rundlauf (sobald S6/S7 stehen).

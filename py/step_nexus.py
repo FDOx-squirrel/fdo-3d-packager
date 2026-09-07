@@ -62,7 +62,7 @@ def _find_binary(explicit: str | None, env_var: str, default_name: str) -> str |
 
 
 def run(args: argparse.Namespace) -> tuple[bool, str]:
-    info = load_source_info()
+    info = load_source_info(getattr(args, "slug", None))
     slug = info["slug"]
     out_dir = DIST / slug
     obj_path = out_dir / "model.obj"
@@ -127,6 +127,7 @@ if __name__ == "__main__":
                           "CAUTION: confirmed to produce a texture-less .nxz, see module docstring.")
     ap.add_argument("--nxsbuild-ram", type=int, default=None, metavar="MB",
                      help="Pass -r <MB> to nxsbuild (its own default: 2000).")
+    ap.add_argument("--slug", help="Which fetched model (data/raw/<slug>/) to build. Auto-detected if exactly one exists.")
     ok, message = run(ap.parse_args())
     print(f"[nexus] {message}")
     raise SystemExit(0 if ok else 1)

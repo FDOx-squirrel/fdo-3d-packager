@@ -4,17 +4,18 @@ The only step allowed to touch the network (Sketchfab Data/Download API).
 Not part of the default `python main.py` run; call it explicitly:
 
     python main.py --only fetch --sketchfab "https://sketchfab.com/3d-models/..."
+    python main.py --only fetch --sketchfab "https://sketchfab.com/3d-models/aaa..." --sketchfab "https://sketchfab.com/3d-models/bbb..."
     python main.py --only fetch --local ./scans/rathealy_kiriengine.glb --title "..." --creator "..." --licence "..."
 
 S2: migrated from the sketchfab_fdo_prototype in the neighbouring chat --
 Sketchfab Data API metadata harvest + Download API request for --sketchfab,
 or a local-file copy/validate for --local. Writes the model file plus every
 sibling file it references (see resolve_sibling_files()) to
-data/raw/<slug>/, and data/raw/source_info.json (the S2/S3/S4/S5 handoff
-contract -- see build_source_info() docstring) recording `model_file` as
-the path *relative to data/raw/*. For --sketchfab, the raw API response
-also goes to data/raw/sketchfab_meta.json for audit (matches the
-prototype's convention).
+data/raw/<slug>/, plus data/raw/<slug>/source_info.json (the S2/S3/S4/S5
+handoff contract -- see build_source_info() docstring) recording
+`model_file` as the path *relative to data/raw/*. For --sketchfab, the raw
+API response also goes to data/raw/<slug>/sketchfab_meta.json (audit trail,
+also read back by mdcff/S5 for enrichment -- see step_mdcff.py).
 
 Befund 2026-09-04 (first real --sketchfab run, "Donaghmore Church ruin"):
 the original version of this step copied only the .gltf file itself and
@@ -28,6 +29,27 @@ their relative sub-paths (e.g. textures/foo.jpeg) so the relative URIs
 inside the model keep resolving from its new location. .glb has no such
 siblings (self-contained binary); --local .obj can have the same problem
 via its mtllib/map_* references, fixed the same way.
+
+Nachtrag 2026-09-07 (3) -- batch --sketchfab, per-slug source_info.json:
+`--sketchfab` is now repeatable (`action="append"`), so one `fetch` call
+can pull several models in one go (e.g. the "Holy Wells" Wikidata test set
+discussed in this chat). This forced `data/raw/source_info.json` to stop
+being a single top-level file -- with more than one slug in flight, a
+second fetch would silently clobber the first's handoff data before S3/S4/
+S5 ever ran. It now lives at `data/raw/<slug>/source_info.json` (next to
+`sketchfab_meta.json` and the model file, which were already per-slug),
+for both --sketchfab and --local. See fdo_3d_packager_utils.py's
+`resolve_slug()`/`discover_slugs()` for how S3-S5 and `main.py --all-slugs`
+pick which slug(s) to act on, and PRIMER.md A4 for why this isn't a
+migration path for old top-level source_info.json files (re-run fetch
+instead -- data/raw/ is regenerable, see PRIMER.md A3).
+
+Per-model metadata overrides (--title/--creator/--creator-profile/
+--licence/--licence-url/--source-note) only make sense for a single model
+-- applying one --title to N different Sketchfab models would silently
+mislabel N-1 of them. Passing any of them together with more than one
+--sketchfab URL is therefore a hard error, not a warning (see
+run_sketchfab_batch()).
 """
 from __future__ import annotations
 
@@ -274,18 +296,18 @@ def source_info_from_sketchfab(meta: dict, source_url: str, uid: str, args: argp
     )
 
 
-def run_sketchfab(args: argparse.Namespace) -> tuple[bool, str]:
-    if not args.token:
-        return False, "no Sketchfab API token (--token or SKETCHFAB_API_TOKEN)"
-
-    uid = extract_uid(args.sketchfab)
-    slug = guess_slug(args.sketchfab, uid)
+def _fetch_one_sketchfab(url: str, args: argparse.Namespace) -> tuple[bool, str, str | None]:
+    """One model, one Sketchfab URL -- the body of the old single-URL
+    run_sketchfab(), factored out so run_sketchfab_batch() can loop it.
+    Returns (ok, message, slug); slug is None on failure so callers don't
+    have to guess one out of a half-written state."""
+    uid = extract_uid(url)
+    slug = guess_slug(url, uid)
     ensure_dirs()
     work_dir = DATA_RAW / "_sketchfab_download"
 
     print(f"[fetch] metadata for {uid} ...")
     meta = fetch_metadata(uid)
-    write_json(meta, DATA_RAW / "sketchfab_meta.json")
 
     print("[fetch] requesting download link ...")
     gltf_url = request_download_url(uid, args.token)
@@ -297,11 +319,18 @@ def run_sketchfab(args: argparse.Namespace) -> tuple[bool, str]:
     src_dir = unzip_archive(zip_path, work_dir / "gltf_src")
     model_in = find_model_file(src_dir)
 
+    # copy_model_with_siblings() rmtree()s data/raw/<slug>/ first (no stale
+    # siblings from a previous fetch of the same slug) -- both per-slug
+    # JSON files below must therefore be written *after* this call, not
+    # before, or it would delete what it just wrote (Befund 2026-09-07 (3),
+    # hit while moving these from the old shared top-level location).
     dest, siblings, missing_siblings = copy_model_with_siblings(model_in, slug)
 
-    info = source_info_from_sketchfab(meta, args.sketchfab, uid, args)
+    write_json(meta, DATA_RAW / slug / "sketchfab_meta.json")
+
+    info = source_info_from_sketchfab(meta, url, uid, args)
     info["model_file"] = str(dest.relative_to(DATA_RAW))
-    write_json(info, DATA_RAW / "source_info.json")
+    write_json(info, DATA_RAW / slug / "source_info.json")
 
     # Raw download intermediates are not the deliverable and would make the
     # step non-reproducible-looking in git status (they are re-derived from
@@ -317,7 +346,7 @@ def run_sketchfab(args: argparse.Namespace) -> tuple[bool, str]:
 
     todo_note = f", {len(info['todo_placeholders'])} TODO placeholder(s)" if info["todo_placeholders"] else ""
     sibling_note = f", +{len(siblings)} sibling file(s)" if siblings else ""
-    message = f"fetched {dest.relative_to(DATA_RAW.parent)} from Sketchfab ({slug}){sibling_note}{todo_note}"
+    message = f"{dest.relative_to(DATA_RAW.parent)} from Sketchfab ({slug}){sibling_note}{todo_note}"
     warn_reasons = []
     if info["todo_placeholders"]:
         warn_reasons.append("title/creator/licence missing from Sketchfab metadata, pass --title/--creator/--licence")
@@ -325,7 +354,58 @@ def run_sketchfab(args: argparse.Namespace) -> tuple[bool, str]:
         warn_reasons.append(f"referenced sibling file(s) missing, S3 will fail to import: {', '.join(missing_siblings)}")
     if warn_reasons:
         message = "Warning: " + message + " -- " + "; ".join(warn_reasons)
-    return True, message
+    return True, message, slug
+
+
+def run_sketchfab_batch(args: argparse.Namespace) -> tuple[bool, str]:
+    """--sketchfab is `action="append"` (main.py/this module's own
+    argparse), so args.sketchfab is always a list here, one URL or many.
+    Per-model overrides don't make sense for more than one URL (module
+    docstring) -- checked once up front rather than per item, so a batch
+    fails before touching the network at all rather than half-fetching.
+    A single bad URL in a larger batch does not abort the rest: each is
+    fetched independently and the run only fails outright if *every* URL
+    failed, mirroring the Warning/--strict pattern the rest of this repo
+    already uses for partial-but-usable results."""
+    urls = args.sketchfab
+    if len(urls) > 1:
+        overrides = [
+            name for name in ("title", "creator", "creator_profile", "licence", "licence_url", "source_note")
+            if getattr(args, name, None)
+        ]
+        if overrides:
+            flags = ", ".join(f"--{name.replace('_', '-')}" for name in overrides)
+            return False, (
+                f"{flags} not supported with multiple --sketchfab URLs -- each model already "
+                "carries its own Sketchfab metadata, one override value can't apply to all of them"
+            )
+
+    if len(urls) == 1:
+        # Keep the exact single-item message shape from before batch
+        # support existed -- no "[slug] "/"N/M" wrapper noise for what is
+        # still overwhelmingly the common case.
+        ok, message, _slug = _fetch_one_sketchfab(urls[0], args)
+        return ok, message
+
+    results: list[str] = []
+    ok_count = 0
+    for url in urls:
+        try:
+            ok, message, slug = _fetch_one_sketchfab(url, args)
+        except Exception as exc:  # noqa: BLE001 -- one bad URL must not abort the batch
+            ok, message, slug = False, str(exc), None
+        if ok:
+            ok_count += 1
+        results.append(f"[{slug or url}] {message}")
+
+    if ok_count == 0:
+        return False, f"all {len(urls)} Sketchfab fetches failed:\n" + "\n".join(results)
+
+    combined = f"fetched {ok_count}/{len(urls)} Sketchfab model(s):\n" + "\n".join(results)
+    any_issue = ok_count < len(urls) or any("warning" in r.lower() for r in results)
+    if any_issue and not combined.lower().startswith("warning"):
+        combined = "Warning: " + combined
+    return True, combined
 
 
 # --------------------------------------------------------------------------
@@ -359,7 +439,7 @@ def run_local(args: argparse.Namespace) -> tuple[bool, str]:
         sketchfab_uid=None,
         source_note=args.source_note,
     )
-    write_json(info, DATA_RAW / "source_info.json")
+    write_json(info, DATA_RAW / slug / "source_info.json")
 
     todo_note = f", {len(info['todo_placeholders'])} TODO placeholder(s) in source_info.json" if info["todo_placeholders"] else ""
     sibling_note = f", +{len(siblings)} sibling file(s)" if siblings else ""
@@ -384,7 +464,7 @@ def run(args: argparse.Namespace) -> tuple[bool, str]:
     if not sketchfab and not local:
         return False, "one of --sketchfab / --local is required for the fetch step"
     if sketchfab:
-        return run_sketchfab(args)
+        return run_sketchfab_batch(args)
     return run_local(args)
 
 
@@ -393,7 +473,8 @@ if __name__ == "__main__":
 
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     src = ap.add_mutually_exclusive_group(required=True)
-    src.add_argument("--sketchfab", metavar="URL")
+    src.add_argument("--sketchfab", action="append", metavar="URL",
+                      help="Repeatable: --sketchfab URL1 --sketchfab URL2 ... for a batch fetch.")
     src.add_argument("--local", metavar="PATH")
     ap.add_argument("--token", default=os.environ.get("SKETCHFAB_API_TOKEN"))
     ap.add_argument("--title")

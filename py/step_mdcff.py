@@ -34,14 +34,19 @@ A4 rows -- kept short here, the "why" lives there, not duplicated per line):
   available -- far more reliable than guessing from the human label, which
   is all a `--local` run ever has, where the old heuristic still applies.
 
-`load_sketchfab_meta()` reads `data/raw/sketchfab_meta.json` -- the full
-raw Data API v3 response `fetch` (S2) already stashes for every
+`load_sketchfab_meta()` reads `data/raw/<slug>/sketchfab_meta.json` -- the
+full raw Data API v3 response `fetch` (S2) already stashes for every
 `--sketchfab` run, previously write-only (audit trail only). This step is
 the first to actually read it back, pulling in whatever `source_info.json`
 doesn't carry: tags, categories, `license.slug`, `publishedAt`/`createdAt`,
 the canonical `viewerUrl`, `faceCount`/`vertexCount`. Absent for `--local`
 runs (no such file) or if fetch predates this step -- every field below is
 optional and MD.cff/CITATION.cff still build without it, just leaner.
+
+`--slug` (see `fdo_3d_packager_utils.py`:`resolve_slug()`) picks which
+fetched model to describe when more than one exists under `data/raw/`;
+auto-detected when exactly one does. `main.py --all-slugs` loops this step
+(and any others selected) over every one of them.
 """
 from __future__ import annotations
 
@@ -127,13 +132,14 @@ def _entity(label: str, entity_id: str | None) -> dict:
 
 def load_sketchfab_meta(info: dict) -> dict | None:
     """The raw Sketchfab Data API v3 response `fetch` (S2) already saved to
-    data/raw/sketchfab_meta.json for `--sketchfab` runs (audit trail --
-    see step_fetch.py:run_sketchfab). Returns None for `--local` runs (no
-    such file) or if it's missing/unreadable for any other reason -- every
-    caller treats this as optional enrichment, never a requirement."""
+    data/raw/<slug>/sketchfab_meta.json for `--sketchfab` runs (audit trail
+    -- see step_fetch.py:_fetch_one_sketchfab). Returns None for `--local`
+    runs (no such file) or if it's missing/unreadable for any other reason
+    -- every caller treats this as optional enrichment, never a
+    requirement."""
     if info.get("input_mode") != "sketchfab":
         return None
-    path = DATA_RAW / "sketchfab_meta.json"
+    path = DATA_RAW / info["slug"] / "sketchfab_meta.json"
     if not path.exists():
         return None
     try:
@@ -289,7 +295,7 @@ def validate_md_cff(md_cff: dict) -> list[str]:
 
 
 def run(args: argparse.Namespace) -> tuple[bool, str]:
-    info = load_source_info()
+    info = load_source_info(getattr(args, "slug", None))
     slug = info["slug"]
     out_dir = DIST / slug
 
@@ -349,6 +355,7 @@ if __name__ == "__main__":
                      help="MD.cff publishers[0].label. Required (or set FDO_PUBLISHER_LABEL), no hardcoded default (PRIMER.md A4).")
     ap.add_argument("--publisher-id", default=os.environ.get("FDO_PUBLISHER_ID"),
                      help="MD.cff publishers[0].id, e.g. a GitHub/ROR URL. Optional (or set FDO_PUBLISHER_ID).")
+    ap.add_argument("--slug", help="Which fetched model (data/raw/<slug>/) to describe. Auto-detected if exactly one exists.")
     ok, message = run(ap.parse_args())
     print(f"[mdcff] {message}")
     raise SystemExit(0 if ok else 1)

@@ -57,12 +57,48 @@ def write_yaml(data: Any, path: Path) -> None:
     path.write_text(text, encoding="utf-8")
 
 
-def load_source_info() -> dict:
-    """Read data/raw/source_info.json, the S2 -> S3/S4/S5 handoff contract
-    (see step_fetch.py:build_source_info -- slug/model_file/title/creator/
-    licence/... plus todo_placeholders). Shared here rather than re-derived
-    per step, per this module's own purpose (see docstring)."""
-    path = DATA_RAW / "source_info.json"
+def discover_slugs() -> list[str]:
+    """Every slug fetch has produced so far -- every data/raw/<slug>/
+    directory that has a source_info.json in it. Sorted for determinism
+    (filesystem iteration order isn't guaranteed across platforms, and
+    this repo's own rule is no unreproducible ordering anywhere, PRIMER.md
+    A3). Shared by resolve_slug() below and by main.py's --all-slugs."""
+    if not DATA_RAW.exists():
+        return []
+    return sorted(p.parent.name for p in DATA_RAW.glob("*/source_info.json"))
+
+
+def resolve_slug(explicit: str | None) -> str:
+    """--slug resolution shared by every per-slug step (convert/nexus/
+    mdcff, S3-S5): an explicit --slug always wins; with none given, exactly
+    one fetched slug can be inferred (today's single-model workflow keeps
+    working unchanged), more than one requires --slug so a step never
+    silently guesses which model it's about, and zero is the existing
+    'run fetch first' situation (raised by load_source_info() itself, not
+    here, so callers that want their own message can catch it)."""
+    if explicit:
+        return explicit
+    slugs = discover_slugs()
+    if len(slugs) == 1:
+        return slugs[0]
+    if not slugs:
+        raise FileNotFoundError(
+            "no data/raw/<slug>/source_info.json found -- run `python main.py --only fetch ...` first"
+        )
+    raise ValueError(
+        f"multiple slugs found under data/raw/ ({', '.join(slugs)}) -- pass --slug to pick one, "
+        "or --all-slugs to run every one of them"
+    )
+
+
+def load_source_info(slug: str | None = None) -> dict:
+    """Read data/raw/<slug>/source_info.json, the S2 -> S3/S4/S5 handoff
+    contract (see step_fetch.py:build_source_info -- slug/model_file/title/
+    creator/licence/... plus todo_placeholders). `slug` picks which fetched
+    model; None auto-resolves via resolve_slug() (works unchanged for the
+    common single-model case, requires --slug once more than one exists)."""
+    resolved = resolve_slug(slug)
+    path = DATA_RAW / resolved / "source_info.json"
     if not path.exists():
         raise FileNotFoundError(
             f"{path} not found -- run `python main.py --only fetch ...` first"

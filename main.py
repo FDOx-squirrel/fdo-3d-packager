@@ -8,8 +8,11 @@
     python main.py --dry-run           print the plan, run nothing
     python main.py --strict            warnings become errors (this is what CI runs)
     python main.py --only fetch --sketchfab "https://sketchfab.com/3d-models/..."
+    python main.py --only fetch --sketchfab "https://sketchfab.com/3d-models/aaa..." --sketchfab "https://sketchfab.com/3d-models/bbb..."
     python main.py --only fetch --local ./scans/rathealy_kiriengine.glb --title "..." --creator "..." --licence "..."
     python main.py --only mdcff --publisher-label "Research Squirrel Engineers Network" --publisher-id "https://github.com/Research-Squirrel-Engineers"
+    python main.py --slug govan-2                        run the default pipeline for one fetched model
+    python main.py --all-slugs                            run the default pipeline for every fetched model
 
 See PRIMER.md for what each step does and why. Steps are implemented one
 module per step under py/, each independently runnable
@@ -25,6 +28,8 @@ import sys
 import time
 from dataclasses import dataclass, field
 from typing import Callable, Optional
+
+from py.fdo_3d_packager_utils import discover_slugs
 
 
 @dataclass(frozen=True)
@@ -71,20 +76,34 @@ def build_arg_parser() -> argparse.ArgumentParser:
     ap.add_argument("--dry-run", action="store_true", help="Print the plan, run nothing.")
     ap.add_argument("--strict", action="store_true", help="Warnings become errors (this is what CI runs).")
 
+    # Which fetched model(s) to run the selected step(s) against
+    # (convert/nexus/mdcff, S3-S5; bundle/build_fdo once they exist).
+    # Nachtrag 2026-09-07 (3): data/raw/source_info.json moved from a
+    # single top-level file to one per slug (data/raw/<slug>/), so a step
+    # needs to be told which one when more than one has been fetched --
+    # --slug picks one, --all-slugs loops every step in `selection` over
+    # every slug found. With exactly one slug fetched, neither flag is
+    # needed (auto-detected, see fdo_3d_packager_utils.py:resolve_slug()).
+    ap.add_argument("--slug", help="Which fetched model (data/raw/<slug>/) to act on. Auto-detected if exactly one exists.")
+    ap.add_argument("--all-slugs", action="store_true",
+                     help="Run the selected step(s) for every fetched model under data/raw/, one after another. Not combinable with --slug or a selection that includes fetch.")
+
     # Source selection for the fetch step (S2). Accepted here already so
     # --list/--dry-run document the eventual interface even when fetch isn't
-    # the selected step.
+    # the selected step. --sketchfab is repeatable for a batch fetch
+    # (Nachtrag 2026-09-07 (3)) -- --sketchfab URL1 --sketchfab URL2 ...
     src = ap.add_mutually_exclusive_group()
-    src.add_argument("--sketchfab", metavar="URL", help="Sketchfab model URL or UID (fetch step).")
+    src.add_argument("--sketchfab", action="append", metavar="URL",
+                      help="Sketchfab model URL or UID (fetch step). Repeatable for a batch fetch.")
     src.add_argument("--local", metavar="PATH", help="Local .glb/.gltf/.obj file (fetch step).")
     ap.add_argument("--token", default=os.environ.get("SKETCHFAB_API_TOKEN"),
                      help="Sketchfab API token (fetch step, --sketchfab only; default: env SKETCHFAB_API_TOKEN).")
-    ap.add_argument("--title", help="Metadata override/source for --local (fetch step).")
-    ap.add_argument("--creator", help="Metadata override/source for --local (fetch step).")
-    ap.add_argument("--creator-profile", help="Metadata override/source for --local (fetch step).")
-    ap.add_argument("--licence", help="Metadata override/source for --local (fetch step).")
-    ap.add_argument("--licence-url", help="Metadata override/source for --local (fetch step).")
-    ap.add_argument("--source-note", help="Free-text provenance note, e.g. 'KiriEngine, 180 photos, 2026-03' (fetch step).")
+    ap.add_argument("--title", help="Metadata override/source for --local (fetch step). Not usable with more than one --sketchfab URL.")
+    ap.add_argument("--creator", help="Metadata override/source for --local (fetch step). Not usable with more than one --sketchfab URL.")
+    ap.add_argument("--creator-profile", help="Metadata override/source for --local (fetch step). Not usable with more than one --sketchfab URL.")
+    ap.add_argument("--licence", help="Metadata override/source for --local (fetch step). Not usable with more than one --sketchfab URL.")
+    ap.add_argument("--licence-url", help="Metadata override/source for --local (fetch step). Not usable with more than one --sketchfab URL.")
+    ap.add_argument("--source-note", help="Free-text provenance note, e.g. 'KiriEngine, 180 photos, 2026-03' (fetch step). Not usable with more than one --sketchfab URL.")
 
     # Blender binary for the convert step (S3). Accepted here already for
     # the same reason as --sketchfab/--local above.
@@ -126,18 +145,27 @@ def resolve_selection(args: argparse.Namespace) -> list[str]:
     _check_known(args.skip)
 
     if args.only:
-        return [args.only]
-
-    if not args.frm and not args.skip:
+        selection = [args.only]
+    elif not args.frm and not args.skip:
         # Default run: every non-network step, in order.
-        return [s.id for s in STEPS if not s.network]
+        selection = [s.id for s in STEPS if not s.network]
+    else:
+        ids = list(STEP_IDS)
+        if args.frm:
+            ids = ids[ids.index(args.frm):]
+        if args.skip:
+            ids = [i for i in ids if i != args.skip]
+        selection = ids
 
-    ids = list(STEP_IDS)
-    if args.frm:
-        ids = ids[ids.index(args.frm):]
-    if args.skip:
-        ids = [i for i in ids if i != args.skip]
-    return ids
+    if args.all_slugs:
+        if args.slug:
+            raise SystemExit("--all-slugs and --slug are mutually exclusive -- pick one")
+        if "fetch" in selection:
+            raise SystemExit(
+                "--all-slugs can't include fetch -- fetch takes --sketchfab/--local directly, "
+                "not a slug (it's what creates them); run it separately first"
+            )
+    return selection
 
 
 def print_list() -> None:
@@ -155,6 +183,40 @@ def run_step(step: Step, args: argparse.Namespace) -> tuple[bool, str]:
     return fn(args)
 
 
+def run_selection_once(selection: list[str], args: argparse.Namespace) -> tuple[Optional[int], bool]:
+    """Runs `selection` once against whatever `args.slug` currently points
+    at (None is fine -- resolve_slug() inside load_source_info() picks the
+    single fetched model, or the per-step code raises a clear error).
+    Returns (exit_code_or_None, had_warning) -- exit_code is None only when
+    every step in the selection succeeded, so main()/run_all_slugs() can
+    tell "stop everything now" apart from "this slug is done, warnings
+    noted"."""
+    timings: list[tuple[str, float]] = []
+    had_warning = False
+    for step_id in selection:
+        step = STEP_BY_ID[step_id]
+        start = time.monotonic()
+        try:
+            ok, message = run_step(step, args)
+        except Exception as exc:  # noqa: BLE001 -- report, do not swallow
+            print(f"[{step_id}] ERROR: {exc}", file=sys.stderr)
+            return 1, had_warning
+        elapsed = time.monotonic() - start
+        timings.append((step_id, elapsed))
+        print(f"[{step_id}] {message} ({elapsed:.2f}s)")
+        if not ok:
+            print(f"[{step_id}] step reported failure, stopping.", file=sys.stderr)
+            return 1, had_warning
+        if message.lower().startswith("warning"):
+            had_warning = True
+
+    total = sum(t for _, t in timings) or 1e-9
+    print("\nTiming:")
+    for step_id, elapsed in timings:
+        print(f"  {step_id:<10} {elapsed:6.2f}s  {100 * elapsed / total:5.1f}%")
+    return None, had_warning
+
+
 def main() -> int:
     args = build_arg_parser().parse_args()
 
@@ -168,33 +230,30 @@ def main() -> int:
         print("Plan (dry run, nothing executed):")
         for step_id in selection:
             print(f"  - {step_id}")
+        if args.all_slugs:
+            slugs = discover_slugs()
+            print(f"\n--all-slugs: would run the above for {len(slugs)} slug(s): {', '.join(slugs) or '(none found)'}")
         return 0
 
-    timings: list[tuple[str, float]] = []
-    had_warning = False
-    for step_id in selection:
-        step = STEP_BY_ID[step_id]
-        start = time.monotonic()
-        try:
-            ok, message = run_step(step, args)
-        except Exception as exc:  # noqa: BLE001 -- report, do not swallow
-            print(f"[{step_id}] ERROR: {exc}", file=sys.stderr)
+    if args.all_slugs:
+        slugs = discover_slugs()
+        if not slugs:
+            print("--all-slugs: no data/raw/<slug>/source_info.json found -- run fetch first", file=sys.stderr)
             return 1
-        elapsed = time.monotonic() - start
-        timings.append((step_id, elapsed))
-        print(f"[{step_id}] {message} ({elapsed:.2f}s)")
-        if not ok:
-            print(f"[{step_id}] step reported failure, stopping.", file=sys.stderr)
-            return 1
-        if message.lower().startswith("warning"):
-            had_warning = True
+    else:
+        slugs = [args.slug]  # a single None is fine -- resolve_slug() auto-detects
 
-    total = sum(t for _, t in timings) or 1e-9
-    print("\nTiming:")
-    for step_id, elapsed in timings:
-        print(f"  {step_id:<10} {elapsed:6.2f}s  {100 * elapsed / total:5.1f}%")
+    overall_had_warning = False
+    for slug in slugs:
+        if len(slugs) > 1:
+            print(f"\n=== slug: {slug} ===")
+        args.slug = slug
+        exit_code, had_warning = run_selection_once(selection, args)
+        if exit_code is not None:
+            return exit_code
+        overall_had_warning = overall_had_warning or had_warning
 
-    if args.strict and had_warning:
+    if args.strict and overall_had_warning:
         print("\n--strict: warnings present, failing.", file=sys.stderr)
         return 1
     return 0

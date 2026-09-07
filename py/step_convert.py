@@ -91,7 +91,7 @@ def _copy_textures_from_raw(model_dir_raw: Path, out_dir: Path, mtl_path: Path) 
 
 
 def run(args: argparse.Namespace) -> tuple[bool, str]:
-    info = load_source_info()
+    info = load_source_info(getattr(args, "slug", None))
     model_in = DATA_RAW / info["model_file"]
     if not model_in.exists():
         return False, f"model file from source_info.json not found: {model_in} -- re-run fetch"
@@ -145,6 +145,7 @@ def run(args: argparse.Namespace) -> tuple[bool, str]:
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--blender-bin", default=os.environ.get("BLENDER_BIN", "blender"))
+    ap.add_argument("--slug", help="Which fetched model (data/raw/<slug>/) to convert. Auto-detected if exactly one exists.")
     ok, message = run(ap.parse_args())
     print(f"[convert] {message}")
     raise SystemExit(0 if ok else 1)
