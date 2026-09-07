@@ -40,12 +40,21 @@ need. This folder keeps only what `3DHOP_no_tools.html` (renamed
   if it's missing. `ply.js` is *not* actually needed (we only ship
   `.nxz`, never raw `.ply`) but stays since `index.html` loads it
   unconditionally and dropping it means also editing the html, for 29 KB.
-- **`skins/`**: only the 7 dark-toolbar icons (`home`/`zoomin`/`zoomout`/
-  `light`/`light_on`/`full`/`full_on`) and the one `backgrounds/light.jpg`
-  `index.html` actually references -- not the other five skin themes
-  (`light`, `minimal_dark`, `minimal_light`, `transparent_dark`,
-  `transparent_light`) or the icons only `3DHOP_all_tools.html` uses
-  (measure/sections/pick/pin/color/normals/orthographic/...).
+- **`skins/`**: only the 7 dark-toolbar icons `index.html` actually
+  references by `src` (`home`, `zoomin`, `zoomout`, `lightcontrol`,
+  `lightcontrol_on`, `full`, `full_on`) and the one `backgrounds/light.jpg`
+  it sets via inline style -- not the other five skin themes (`light`,
+  `minimal_dark`, `minimal_light`, `transparent_dark`, `transparent_light`)
+  or the icons only `3DHOP_all_tools.html` uses (measure/sections/pick/
+  pin/color/normals/orthographic/...). **Korrigiert 2026-09-07 (Nachtrag,
+  echter Lauf bei Flo):** the two light-control icons were first vendored
+  under the wrong filenames -- `index.html`'s `id="light"`/`id="light_on"`
+  attributes read as if the files were `light.png`/`light_on.png`, but the
+  actual `src` values (and the files 3DHOP ships) are
+  `lightcontrol.png`/`lightcontrol_on.png` -- a *different* icon pair in
+  the same folder (`light.png`/`light_on.png`/`light_off.png` exist too,
+  for an unrelated purpose upstream). Fixed by vendoring the two correct
+  files instead.
 - **`stylesheet/`**: `3dhop.css` only, not `3dhop_panels.css` (that's for
   `3DHOP_all_tools.html`'s tool panels).
 

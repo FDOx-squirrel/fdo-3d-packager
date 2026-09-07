@@ -1004,6 +1004,71 @@ entpacken, `viewer/index.html` **über einen lokalen Webserver** öffnen
 ob sich das jeweilige Modell wirklich dreht/lädt, inklusive Textur bei
 Govan 2.
 
+### Nachtrag 2026-09-07 (2) — erster echter Lauf bei Flo, Icon-Bug gefunden und behoben, Rendering noch offen
+
+[#nachtrag-2026-09-07-2--erster-echter-lauf-bei-flo-icon-bug-gefunden-und-behoben-rendering-noch-offen](#nachtrag-2026-09-07-2--erster-echter-lauf-bei-flo-icon-bug-gefunden-und-behoben-rendering-noch-offen)
+
+Erster echter Lauf des genauen Befehls aus dem vorherigen Abschnitt auf
+Flos Windows-Maschine, committed. **`fetch`→`convert`→`nexus`→`mdcff`→
+`bundle` liefen für beide Slugs fehlerfrei durch** (`build_fdo`/S7
+weiterhin No-Op-Stub, wie erwartet):
+
+| Slug | fetch | convert | nexus | mdcff | bundle | ZIP-Größe |
+|---|---|---|---|---|---|---|
+| govan-2 | (Batch, 3,31s für beide) | 37,06s | 10,55s | 0,17s | 2,77s | 39 121 654 Byte |
+| freshford-st-lachtains-well-low-poly | – | 30,80s | 3,62s | 0,05s | 1,02s | 22 049 205 Byte |
+
+Govan 2: 120 797 Vertices/236 352 Faces (deckt sich mit der
+Sketchfab-Seitenangabe 236,4k Dreiecke/119,8k Vertices aus S4), `nxscompress`
+meldet `Textures: 24` — wie beim ersten S4-Lauf. `convert` fand nur die
+Basisfarb-Textur (`1 texture(s) -> textures/`), keine Normal-Map, wie in
+S3/S4 bereits als OBJ/MTL-Formatgrenze dokumentiert, kein neuer Befund.
+
+**Korrektur einer Annahme aus dem vorherigen Abschnitt:** Freshford ist
+entgegen der dort geäußerten Vermutung **nicht** unbe-texturiert — echter
+Lauf zeigt `4 model file(s), 1 texture(s)` genau wie Govan 2, also inkl.
+`model.mtl` und einer Basisfarb-Textur. Der "unbe-texturierte Fall" war
+eine reine Sandkasten-Testannahme für die Fixture-Verifikation (siehe
+Erledigt-Abschnitt oben), keine reale Eigenschaft dieses Modells — der
+Code-Pfad für ein wirklich unbe-texturiertes Modell bleibt trotzdem
+korrekt (ungetestet an echten Daten, aber die Fixture-Verifikation deckt
+ihn ab).
+
+**Gefundener und behobener Bug — falsche Icon-Dateinamen beim Vendoring:**
+`viewer/index.html` im Browser geöffnet (`python -m http.server` im
+entpackten `govan-2.zip`), Konsole zeigte zwei 404: `GET
+/viewer/skins/dark/lightcontrol_on.png` und `.../lightcontrol.png`. Ursache:
+beim Vendoring (siehe S6-Substanz oben) wurden die HTML-`id`-Attribute
+(`id="light"`/`id="light_on"`) fälschlich als Dateinamen gelesen statt der
+tatsächlichen `src`-Werte — 3DHOP hat unter `skins/dark/` sowohl
+`light*.png`/`light_off.png` (ein anderes, in `index.html` gar nicht
+referenziertes Icon-Paar) als auch `lightcontrol*.png` (das tatsächlich
+referenzierte Paar). `assets/3dhop/skins/dark/light.png`/`light_on.png`
+durch die beiden korrekten `lightcontrol.png`/`lightcontrol_on.png`
+ersetzt, `assets/3dhop/NOTICE.md` entsprechend korrigiert. Kein Einfluss
+auf `step_bundle.py` selbst (weiterhin 24 Viewer-Dateien, nur zwei davon
+mit anderem Namen).
+
+**Weiterhin offen — Modell rendert nicht sichtbar:** nach dem Icon-Fix
+zeigt die Konsole `3DHOP version: 4.3` (Viewer initialisiert) und `GET
+/data/model/model.nxz` mit Status 200 (Modell wird geladen), aber auch
+eine Warnung `WebGL warning: checkFramebufferStatus: Framebuffer not
+complete (status: 0x8cd7)`. Das Canvas zeigt keine erkennbare
+3D-Geometrie, nur blasse, unzusammenhängende Linien statt des Hogback-
+Steins. Ob die Framebuffer-Warnung ursächlich ist (0x8CD7 =
+`FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT`, in 3DHOP typischerweise vom
+Offscreen-Pick-Framebuffer, nicht zwingend vom Hauptrender-Pass), oder ob
+es an der Trackball-Startdistanz (`startDistance: 2.5`,
+`minMaxDist: [0.5, 3.0]`, aus `index.html`, unverändert von Upstream
+übernommen) liegt, die von einem auf die reale Modellgröße bezogenen
+Bounding-Sphere-Autofit abhängt, der hier möglicherweise nicht wie erwartet
+greift, ist noch nicht geklärt — im Sandkasten kein Browser verfügbar, um
+das selbst zu prüfen. **Nächster Schritt:** Flo prüft nach dem Icon-Fix,
+ob Scrollen/Ziehen im Canvas doch ein Modell zeigt (nur falsch
+positionierte Kamera) oder das Canvas tatsächlich leer bleibt (echtes
+Render-Problem), und teilt die volle Browser-Konsole/Netzwerk-Liste
+(nicht nur den sichtbaren Ausschnitt) für die nächste Diagnose.
+
 ---
 
 ## S8 — Batch-Fetch & Multi-Slug-Infrastruktur
@@ -1424,3 +1489,16 @@ Mehrfach-Lauf) — dieser Lauf hatte 5/5 Erfolge, kein Fehlerfall dabei.
   `fdo-squirrel`) — und, davor, Flos echter Lauf von S6 gegen Govan 2 +
   Freshford auf der Windows-Maschine (siehe S6-Erledigt-Abschnitt für den
   genauen Befehl), um `viewer/index.html` wirklich im Browser zu prüfen.
+- **3DHOP-Viewer zeigt kein sichtbares Modell im Browser.** Echter Lauf
+  bei Flo (S6, Nachtrag 2026-09-07 (2)): `model.nxz` lädt (HTTP 200),
+  3DHOP initialisiert (`3DHOP version: 4.3` in der Konsole), aber das
+  Canvas bleibt ohne erkennbare Geometrie, dazu eine WebGL-
+  Framebuffer-Warnung. Ein falscher Icon-Dateiname wurde dabei gefunden
+  und behoben (siehe Nachtrag), löste das Rendering-Problem aber
+  vermutlich nicht, da Icons und WebGL-Canvas unabhängige Teile sind. Noch
+  nicht geklärt: Framebuffer-Warnung ursächlich oder harmlos (Pick-
+  Framebuffer, nicht Hauptrender-Pass)? Trackball-Startdistanz
+  (`startDistance`/`minMaxDist` aus `index.html`, unverändert von
+  Upstream) korrekt für real-skalierte `nxsbuild`-Ausgabe, oder muss sie
+  angepasst werden? Nächster Schritt liegt bei Flo (Browser-Diagnose, kein
+  Browser im Sandkasten verfügbar) — siehe Nachtrag für Details.
