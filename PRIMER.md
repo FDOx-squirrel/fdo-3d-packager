@@ -1916,6 +1916,38 @@ Sketchfab-Zugriff, im Sandkasten weiterhin nicht verfügbar, bleibt laut
 dem hochgeladenen Vorschlagsdokument bewusst ein eigener Schritt danach
 (siehe Teil D).
 
+### Nachtrag 2026-09-08 (2) — Slug im Voraus kennen (vor `fetch`)
+
+[#nachtrag-2026-09-08-2--slug-im-voraus-kennen-vor-fetch](#nachtrag-2026-09-08-2--slug-im-voraus-kennen-vor-fetch)
+
+Berechtigter Einwand im Chat: um `data/local-metadata/<slug>/` anzulegen,
+muss der Slug bekannt sein -- aber `mdcff` (und damit die Kenntnis, wie
+der Slug lautet) läuft normalerweise erst *nach* `fetch`. Klingt nach
+einem Henne-Ei-Problem, ist aber keins: `guess_slug()`/`extract_uid()`
+(`step_fetch.py`) sind reines Regex-Parsing der Eingabe, kein API-Call --
+der Slug ist schon vor jedem Netzwerkzugriff aus der Eingabe selbst
+ableitbar:
+
+- **`--sketchfab URL`**: Slug = der Teil der URL zwischen `/3d-models/`
+  und der abschließenden 32-stelligen Hex-UID (gegen ein echtes README-
+  Beispiel bestätigt: `.../3d-models/donaghmore-church-ruin-a602439f...`
+  -> `donaghmore-church-ruin`).
+- **`--local PATH`**: Slug = `model_in.stem`, der Dateiname ohne Endung
+  -- kennt man ohnehin, bevor man überhaupt fetcht.
+
+Das reicht für den Normalfall (`--only fetch`, dann `--only mdcff` als
+getrennte Aufrufe -- dazwischen liegt `data/raw/<slug>/` sowieso schon
+auf der Platte, der Slug ist ablesbar, kein Vorausberechnen nötig).
+Relevant wird es erst für den kombinierten `--from fetch ...`-Aufruf
+(S8/Nachtrag 2026-09-07 (6)): dort läuft `mdcff` automatisch direkt nach
+`fetch` im selben `main.py`-Aufruf, ohne Gelegenheit, den Override-Ordner
+dazwischen anzulegen -- der muss also *vor* dem Aufruf existieren, mit
+dem von Hand aus der URL abgeleiteten Slug als Ordnernamen.
+
+Kein Code geändert (reine Doku-Ergänzung) -- README.md (`mdcff`-Abschnitt,
+direkt nach dem S10-Override-Absatz) und dieser Nachtrag sind die
+komplette Ergänzung.
+
 ---
 
 ## Teil D — Offene Punkte

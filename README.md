@@ -326,6 +326,36 @@ a sign the override landed in the wrong slug's folder. This directory is
 gitignored: it holds real curated research data, never a repo artefact
 (see `PRIMER.md` A3/A5, S10).
 
+Knowing the slug up front -- to create `data/local-metadata/<slug>/`
+before `mdcff` (or even `fetch`) has run -- doesn't need a fetch or any
+network access: it's derived from the input itself, the same way
+`step_fetch.py` derives it.
+
+- **`--sketchfab URL`**: the slug is the part of the URL between
+  `/3d-models/` and the trailing 32-character hex UID:
+
+  ```
+  https://sketchfab.com/3d-models/donaghmore-church-ruin-a602439f3513431ea1b306358a2581e5
+                         └────────────── slug ─────────────┘└──────────── uid ────────────┘
+                         donaghmore-church-ruin
+  ```
+
+- **`--local PATH`**: the slug is simply the filename stem --
+  `rathealy_kiriengine.glb` -> `rathealy_kiriengine`.
+
+With `--only fetch` run as its own step, there's a natural window
+afterwards to read the confirmed slug back from `data/raw/` before
+running `mdcff` -- but with `--from fetch ...` (fetch chained into the
+same `main.py` call, see above), `mdcff` runs automatically right after
+`fetch` in that same call, so the override directory has to exist
+*before* the command starts:
+
+```cmd
+mkdir data\local-metadata\donaghmore-church-ruin
+:: ...write MD.cff/CITATION.cff into it by hand...
+python main.py --from fetch --sketchfab "https://sketchfab.com/3d-models/donaghmore-church-ruin-a602439f3513431ea1b306358a2581e5" --publisher-label "Research Squirrel Engineers Network" --publisher-id "http://www.wikidata.org/entity/Q73901970"
+```
+
 Once `mdcff` has run, `bundle` picks up `dist/<slug>/` automatically and
 needs no flags of its own:
 
