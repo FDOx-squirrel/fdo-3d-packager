@@ -204,6 +204,13 @@ Eigenschaften, an denen sich ein Lauf messen lässt:
 | Fehlende Texturen (`bundle`, S6) | kein Fehler, kein `Warning:` — ein unbe-texturiertes Modell (z. B. das Freshford-Low-Poly-Testmodell) ist ein legitimer Fall, `data/textures/` wird einfach weggelassen statt eine falsche Warnung zu erzeugen | 2026-09-07 (S6) |
 | `fetch` + Rundlauf in einem `main.py`-Aufruf | Ja — sobald `fetch` Teil der gewählten Schritte ist (`--from fetch` o. ä.), läuft `fetch` einmalig, danach automatisch der Rest **nur für die gerade neu geholten Slug(s)** (`args.fetched_slugs`, von `step_fetch.py` gesetzt), nicht für alle unter `data/raw/`. `--slug`/`--all-slugs` werden in diesem Fall ignoriert (mit Hinweis auf stderr, kein Fehler) — beide könnten die Frage "welche(r) Slug(s)" ohnehin nicht besser beantworten als `fetch` selbst | 2026-09-07 (6) |
 | Infrastrukturübersicht (Sketchfab/lokal → FDO) | Mermaid-Diagramm direkt in `README.md` eingebettet (rendert nativ auf GitHub), Quelle zusätzlich als `docs/infrastructure.mmd`; `docs/render_infrastructure_diagram.py` rendert daraus `docs/infrastructure.jpg` (mmdc → temp. PNG → Pillow-JPG-Konvertierung, `--no-sandbox` als Root) — Muster wortwörtlich aus `fdo-squirrel`s eigenem `fdo_finalize.py:render_mermaid_to_jpg` kopiert (A3). Kein Pipeline-Schritt (keine `STEPS`-Eintragung in `main.py`), reine Doku-Tooling, von Hand nach Änderungen an der `.mmd`-Quelle laufen lassen. `mmdc`/Pillow bewusst nicht in `requirements.txt` — für die eigentliche Pipeline nicht gebraucht | 2026-09-07 |
+| Wo liegt der lokale Metadaten-Override (`mdcff`, S10)? | `data/local-metadata/<slug>/MD.cff` und/oder `CITATION.cff`, unabhängig voneinander, optional. Kein neuer `.gitignore`-Eintrag nötig — `data/*` deckt das schon ab (A5), genau wie `data/raw/` | 2026-09-08 (S10, bestätigt aus dem hochgeladenen S10-Vorschlagsdokument) |
+| Ersetzt der Override die generierte Datei komplett, oder wird gemerged? | **Feld-Ebene-Merge, nicht Datei-Ersetzung.** `build_md_cff()`/`build_citation_cff()` laufen unverändert (inklusive Sketchfab-Anreicherung), danach überschreibt jeder in der lokalen Datei genannte Top-Level-Key den generierten Wert; ein nicht genannter Key bleibt unverändert. Bewusst **kein** Deep-Merge — ein überschriebenes `technique`/`heritage_object` ersetzt das ganze generierte Objekt, keine Sub-Feld-Fusion, passt zu den zwei Anwendungsfällen (Felder, die `mdcff` nie generiert, oder eine bewusste Komplettkorrektur eines falschen generierten Werts) | 2026-09-08 (S10, bestätigt) |
+| Wird die gemergte Datei trotzdem validiert? | ja — MD.cff nach dem Merge unverändert gegen `MD.cff-schema.yaml` geprüft (real gegen `fdo-squirrel`s echten Validator gegengetestet, nicht nur die vendorte Kopie), ein Override der das Schema verletzt bricht genauso hart ab wie ein Generator-Fehler. CITATION.cff hat weiterhin kein Schema in diesem Repo (unverändert seit S5) — auch nach dem Merge keine Schema-Validierung dafür, nur der strukturelle Feld-Check (nächste Zeile) | 2026-09-08 (S10, bestätigt) |
+| MD.cff/CITATION.cff unabhängig überschreibbar? | ja — nur `MD.cff` lokal vorhanden, `CITATION.cff` nicht (oder umgekehrt) ist ein gültiger Fall, jede Datei wird für sich gelesen/gemerged, real getestet | 2026-09-08 (S10, bestätigt) |
+| Kollidiert ein lokaler Wert mit einem strukturellen Feld? | **Warnung, kein Fehler**, wenn der lokale Wert vom generierten abweicht — `--strict` macht daraus einen Abbruch, ein Override der zusätzlich das Schema verletzt bricht unabhängig von `--strict` sofort ab (Zeile oben). MD.cff: `md_cff_version`/`fdo_type`/`id`. **Ergänzt 2026-09-08 (S10, nicht im ursprünglichen Vorschlagsdokument):** dieselbe Prüfung jetzt auch für CITATION.cff, dort mit `cff-version` als einzigem strukturellen Feld — `type`/`authors`/... haben in diesem Repo kein Schema-Gate, also keine sinnvollen Kandidaten für diese Liste | 2026-09-08 (S10, bestätigt + ergänzt) |
+| Neues CLI-Flag nötig? | nein — reine Auto-Erkennung über `data/local-metadata/<slug>/`, kein `--local-metadata`-Pfad-Flag, passt zum bestehenden `sketchfab_meta.json`-Muster (auch nur automatisch gelesen, wenn vorhanden) | 2026-09-08 (S10, bestätigt) |
+| Kaputte/unlesbare lokale Override-Datei (`MD.cff`/`CITATION.cff` unter `data/local-metadata/`)? | **Neue Entscheidung, nicht im ursprünglichen Vorschlagsdokument:** harter Abbruch (`load_local_override()` wirft `ValueError` mit Dateiname, `run()` fängt das und meldet klar welche Datei betroffen ist), **nicht** wie `sketchfab_meta.json` still als „nicht vorhanden" behandelt. Begründung: `sketchfab_meta.json` ist maschinengeschrieben, „lesen fehlgeschlagen → als unangereichert weiterlaufen" ist dort ein vernünftiger Default; ein lokaler Override ist dagegen von Hand geschriebene, bewusst kuratierte Eingabe — ein still ignorierter Parse-Fehler würde ein Paket erzeugen, das aussieht als sei der Override angewendet worden, tatsächlich aber weiterhin die generischen Werte trägt. Das ist schlimmer als ein klarer Abbruch | 2026-09-08 (S10) |
 
 ### A5 Was in welchem Chat hochgeladen wird
 
@@ -239,6 +246,7 @@ Nicht anwendbar in S1 — dieses Repo veröffentlicht selbst keine RDF-IRIs
 | S7 | `dist/<slug>.zip` durch `fdo-squirrel` schicken, `fdo-metadata.ttl` als Beleg (Muster: registry S8) | fdo-3d-packager | S6 | erledigt 2026-09-07 |
 | S8 | Batch-Fetch (`--sketchfab` wiederholbar) + Multi-Slug-Infrastruktur (`data/raw/<slug>/source_info.json`, `--slug`, `--all-slugs`) | fdo-3d-packager | S2–S5 | erledigt 2026-09-07 |
 | S9 | `--all-slugs`-Fix für `build_fdo` ohne `data/raw/`; CI (`--strict`-Smoke-Test gegen Fakes für Blender/nxsbuild/nxscompress, echter Rundlauf durch `fdo-squirrel`) | fdo-3d-packager | S7, S8 | erledigt 2026-09-07 |
+| S10 | `mdcff`-Erweiterung: lokale Metadaten-Overrides (`data/local-metadata/<slug>/MD.cff`/`CITATION.cff`, Feld-Ebene-Merge, für `heritage_object`/`spatial`/`temporal` u. a., die `mdcff` nie selbst herleitet) | fdo-3d-packager | S5 | erledigt 2026-09-08 |
 
 S3 und S4 sind technisch unabhängig von S5 und können in beliebiger
 Reihenfolge bzw. parallel in Angriff genommen werden; S5 braucht die
@@ -1797,6 +1805,119 @@ vollständig real bestätigt, nicht nur simuliert.
 
 ---
 
+## S10 — Lokale Metadaten-Overrides
+
+[#s10--lokale-metadaten-overrides](#s10--lokale-metadaten-overrides)
+
+**Ziel:** `data/local-metadata/<slug>/MD.cff`/`CITATION.cff`, falls
+vorhanden, werden auf Feld-Ebene über die von `mdcff` (S5) generierten
+Dateien gelegt, bevor das Ergebnis validiert und geschrieben wird --
+schließt die Lücke, dass `heritage_object`/`spatial`/`temporal` (u. a.)
+nie generiert werden, obwohl das Schema sie vorsieht (Befund im
+hochgeladenen S10-Vorschlagsdokument, gegen `build_md_cff()` bestätigt).
+
+**Substanz:**
+
+- `py/fdo_3d_packager_utils.py`: neue Konstante `LOCAL_METADATA` (`data/
+  local-metadata/`), analog `DATA_RAW`/`DIST`. Kein neuer
+  `.gitignore`-Eintrag -- `data/*` deckt das Verzeichnis schon ab (A5).
+- `py/step_mdcff.py`: `load_local_override(slug, filename) -> dict | None`
+  liest `data/local-metadata/<slug>/<filename>`, `None` falls nicht
+  vorhanden. Anders als `load_sketchfab_meta()` wird eine vorhandene, aber
+  kaputte Datei **nicht** still wie "nicht vorhanden" behandelt, sondern
+  wirft `ValueError` -- `run()` fängt das und meldet klar, welche Datei
+  betroffen ist (harter Abbruch, neue Entscheidung, siehe A4).
+  `merge_local_override(generated, local, structural_keys)` überschreibt
+  jeden vom Override genannten Top-Level-Key, lässt alle anderen
+  unangetastet, und liefert zusätzlich `overridden_keys` (für die
+  Erfolgsmeldung) sowie `structural_collisions` (für die
+  Warnung/`--strict`-Logik) zurück. Kein Deep-Merge (A4).
+- `run()`: liest beide Override-Dateien vor dem Bauen von `MD.cff`/
+  `CITATION.cff`; merged nach `build_md_cff()`/`build_citation_cff()`;
+  validiert das gemergte `MD.cff` (nicht nur das generierte) gegen
+  `MD.cff-schema.yaml`. `MD_CFF_STRUCTURAL_KEYS`
+  (`md_cff_version`/`fdo_type`/`id`) und `CITATION_CFF_STRUCTURAL_KEYS`
+  (`cff-version`, neu gegenüber dem Vorschlagsdokument, A4) lösen bei
+  Kollision eine `Warning:`-Zeile aus (bestehendes `warn_reasons`-Muster
+  aus `step_fetch.py`, jetzt auch hier verwendet statt des alten
+  Einzel-`if`).
+- Kein neues CLI-Flag, keine Änderung an `main.py`s Argument-Parser.
+
+**Abnahme:**
+
+1. Ohne jede lokale Override-Datei: `python main.py --only mdcff --slug
+   <slug> --publisher-label ... --publisher-id ...` verhält sich exakt wie
+   vor S10 (keine Regression).
+2. Fake-`data/local-metadata/govan-2/MD.cff` mit `heritage_object`/
+   `spatial`/`temporal` gefüllt: derselbe Lauf liefert ein `MD.cff`, das
+   diese drei Felder enthält (vorher nie der Fall) *und* weiterhin die
+   Sketchfab-Anreicherung für `keywords`/`technique` zeigt -- beides
+   gleichzeitig im selben Lauf.
+3. Ein zweiter Fake-Override mit abweichendem `fdo_type` löst die
+   Warnung aus (exit 0), unter `--strict` bricht derselbe Lauf ab (exit
+   1). Ein Override, der `fdo_type` auf einen Nicht-Enum-Wert setzt,
+   bricht unabhängig von `--strict` immer ab (Schema-Validierung).
+4. `CITATION.cff`-Override ohne `MD.cff`-Override (und umgekehrt) läuft
+   für sich allein.
+5. Kaputtes YAML in einer Override-Datei bricht den Lauf hart ab, mit
+   Dateiname in der Fehlermeldung.
+6. Zwei Läufe hintereinander gegen denselben Fake-Zustand: `MD.cff`/
+   `CITATION.cff` bytegleich (`md5sum`).
+7. Das gemergte `MD.cff` validiert nicht nur gegen die vendorte
+   Schema-Kopie, sondern auch gegen `fdo-squirrel`s echten
+   `ingest.metadata_ingest.validate_against_schema()` (Repo dafür
+   zusätzlich geklont).
+
+### Erledigt 2026-09-08
+
+[#erledigt-2026-09-08](#erledigt-2026-09-08)
+
+Implementiert und gegen ein Fake-`data/raw/govan-2/` (`source_info.json` +
+`sketchfab_meta.json`, Muster wie in S5, plus leere `dist/govan-2/
+model.obj`/`model.nxs`/`model.nxz` als Vollständigkeits-Marker) laufen
+lassen -- alle sieben Abnahme-Punkte oben bestätigt, keiner davon nur
+behauptet:
+
+- Ohne Override: identische Ausgabe/Meldung wie vor S10, keine Regression.
+- Mit `heritage_object`/`spatial`/`temporal`-Override: alle drei Felder im
+  geschriebenen `MD.cff`, `keywords` weiterhin mit den Sketchfab-Tags
+  (`hogback`, `govan`, `Cultural Heritage & History`) angereichert,
+  `technique.processing` weiterhin mit der Mesh-Stats-Notiz -- beides im
+  selben Lauf, nicht nur getrennt getestet.
+- **Real gegen `fdo-squirrel`s echten Validator geprüft**, nicht nur die
+  vendorte Schema-Kopie: `fdo-squirrel` zusätzlich geklont,
+  `ingest.metadata_ingest.validate_against_schema()` direkt gegen das
+  gemergte `MD.cff` aufgerufen -- **valide**.
+- Struktureller Kollisionsfall (`fdo_type: fdo:SoftwareFDO` im Override
+  bei generiertem `fdo:3DDataFDO`): `Warning: ...overrides structural
+  field(s) fdo_type...` in der Meldung, exit 0 ohne `--strict`, exit 1
+  mit `--strict` ("--strict: warnings present, failing.").
+- Schema-brechender Override (`fdo_type: not-a-real-type`): bricht sofort
+  ab, unabhängig von `--strict` -- `$.fdo_type: 'not-a-real-type' is not
+  one of [...]`.
+- Nur `CITATION.cff`-Override (`license`, `keywords`), kein
+  `MD.cff`-Override: läuft für sich, `MD.cff` bleibt unverändert generiert,
+  `CITATION.cff` trägt die überschriebenen Felder -- Unabhängigkeit
+  bestätigt.
+- Kaputtes YAML in `CITATION.cff`-Override: bricht sofort ab, Meldung
+  nennt den vollen Pfad der betroffenen Datei.
+- Determinismus: zwei Läufe hintereinander gegen denselben Fake-Zustand
+  (mit Override), `md5sum` von `MD.cff`/`CITATION.cff` identisch.
+- **Regressionstest gegen die bestehende CI-Fixture:** kompletter
+  `convert → nexus → mdcff → bundle → build_fdo`-Rundlauf gegen
+  `.github/ci-fixtures/seed_fixture.py`s `ci-smoke`-Slug mit `--strict`,
+  ohne jede lokale Override-Datei -- weiterhin grün, `fdo-metadata.ttl`
+  wird geschrieben, keine Regression durch den S10-Code selbst.
+
+**Nicht geprüft:** ein echter Produktionslauf mit den tatsächlichen
+CIIC-81-Werten (Wikidata-Objekttyp/Material, OSM-Spatial-ID,
+ChronOntology-Periode aus den alten Folien) -- das braucht Blender/
+Sketchfab-Zugriff, im Sandkasten weiterhin nicht verfügbar, bleibt laut
+dem hochgeladenen Vorschlagsdokument bewusst ein eigener Schritt danach
+(siehe Teil D).
+
+---
+
 ## Teil D — Offene Punkte
 
 *(Aufgeräumt 2026-09-07: vollständig erledigte Punkte wurden hier entfernt,
@@ -1831,9 +1952,20 @@ Liste enthält ab jetzt nur, was tatsächlich noch offen ist.)*
 - **Eigenes menschenlesbares Begleit-YAML** zusätzlich zu `MD.cff`? Tendenz
   weiterhin: nein, nur eine Quelle der Wahrheit -- nicht endgültig
   entschieden.
-- **`spatial`/`temporal`/`heritage_object`/`identifiers`/`version`**
-  bleiben in `MD.cff` ungenutzt (optionale Felder, keine verlässliche
-  Datenquelle aus `source_info.json`/`sketchfab_meta.json`).
+- **`identifiers`/`version`** bleiben in `MD.cff` weiterhin ungenutzt --
+  anders als `heritage_object`/`spatial`/`temporal` (S10 erledigt das)
+  gibt es dafür noch keinen konkreten Anwendungsfall in Flos aktuellen
+  Testkandidaten; der generische Override-Mechanismus aus S10 könnte sie
+  bei Bedarf genauso setzen, ohne weiteren Code.
+- **CIIC 81 (und ggf. Freshford) real mit kuratiertem lokalem Override
+  durch die Pipeline laufen lassen** (S10 ist jetzt bereit dafür, siehe
+  das ursprüngliche, mit diesem Chat hochgeladene S10-Vorschlagsdokument
+  für die konkreten kuratierten Werte -- Objekttyp/Material-Wikidata-IDs,
+  OSM-Spatial-ID, ChronOntology-Periode aus den alten Folien): Flo legt
+  `data/local-metadata/<ciic-81-slug>/MD.cff` von Hand an und ruft
+  `python main.py --sketchfab <URL> ...` auf. Eigener Chat/eigene Sitzung
+  -- braucht Blender/Sketchfab/Nexus-Zugriff, im Sandkasten weiterhin
+  nicht verfügbar.
 - **`--publisher-label`/`--publisher-id` sind Singular** (ein Publisher,
   kein wiederholbares Flag) -- reicht für den aktuellen Anwendungsfall
   (immer "Research Squirrel Engineers Network"). Bei Bedarf später

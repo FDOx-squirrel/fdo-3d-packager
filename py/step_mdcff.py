@@ -47,6 +47,28 @@ optional and MD.cff/CITATION.cff still build without it, just leaner.
 fetched model to describe when more than one exists under `data/raw/`;
 auto-detected when exactly one does. `main.py --all-slugs` loops this step
 (and any others selected) over every one of them.
+
+Local metadata overrides (PRIMER.md S10, decided 2026-09-08): after
+`build_md_cff()`/`build_citation_cff()` run exactly as above, each is
+merged field-by-field with `data/local-metadata/<slug>/MD.cff`/
+`CITATION.cff`, if present (`load_local_override()`/
+`merge_local_override()` below) -- curated values from Flo's own
+research (Wikidata object type, OSM spatial id, ChronOntology period,
+condition assessment, ...) for `heritage_object`/`spatial`/`temporal`,
+which nothing above ever populates, or a deliberate wholesale correction
+of some other field. Every top-level key the override file names replaces
+the generated value for that key outright (not a deep merge -- an
+overridden `technique`/`heritage_object` replaces the whole generated
+object, it does not patch individual sub-fields); a key it doesn't name
+leaves the generated value untouched. MD.cff and CITATION.cff overrides
+are independent files, each optional on its own. The merged MD.cff is
+still schema-validated exactly like the purely generated one -- an
+override that produces an invalid MD.cff fails the same hard way a
+generator bug would. Overwriting `md_cff_version`/`fdo_type`/`id` (MD.cff)
+or `cff-version` (CITATION.cff) is applied but flagged as a Warning
+(`--strict`: hard fail) -- these are almost always a wrong-slug-folder
+accident, not a curated correction, but not implausible enough to refuse
+outright.
 """
 from __future__ import annotations
 
@@ -63,9 +85,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import yaml
 from jsonschema import Draft202012Validator
 
-from py.fdo_3d_packager_utils import DATA_RAW, DIST, REPO_ROOT, load_source_info, read_json, write_yaml
+from py.fdo_3d_packager_utils import (
+    DATA_RAW, DIST, LOCAL_METADATA, REPO_ROOT, load_source_info, read_json, write_yaml,
+)
 
 SCHEMA_PATH = REPO_ROOT / "schemas" / "md_cff" / "MD.cff-schema.yaml"
+
+# PRIMER.md S10, decided 2026-09-08: top-level keys a local override can in
+# principle overwrite like any other field, but almost never *means* to --
+# see merge_local_override()/run() below for what happens when one does.
+MD_CFF_STRUCTURAL_KEYS = {"md_cff_version", "fdo_type", "id"}
+CITATION_CFF_STRUCTURAL_KEYS = {"cff-version"}
 
 # PRIMER.md A4 (2026-09-03): this repo never mints a PID. `MD.cff.id` stays
 # this fixed placeholder until a manual Zenodo upload gives it a real DOI --
@@ -223,6 +253,76 @@ def extract_enrichment(meta: dict | None) -> dict:
     return out
 
 
+def load_local_override(slug: str, filename: str) -> dict | None:
+    """data/local-metadata/<slug>/<filename> (MD.cff or CITATION.cff, same
+    YAML shape as the generated file), if present -- see this module's
+    docstring (PRIMER.md S10) for what it's for. None if the file simply
+    doesn't exist -- every caller treats that as "no override", same as
+    load_sketchfab_meta() above.
+
+    Unlike load_sketchfab_meta() though, a file that exists but fails to
+    parse is NOT treated as absent. sketchfab_meta.json is a machine-
+    written audit artefact where "couldn't read it, fall back to
+    unenriched" is a reasonable default; a local override is something
+    Flo deliberately wrote by hand, so silently falling back would make
+    the finished package look successfully overridden while it actually
+    still holds the generic generated values -- worse than refusing to
+    run at all. Raises ValueError naming the file; run() turns that into
+    a hard failure with a clear message rather than a bare traceback."""
+    path = LOCAL_METADATA / slug / filename
+    if not path.exists():
+        return None
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except yaml.YAMLError as exc:
+        raise ValueError(f"{path} is not valid YAML: {exc}") from exc
+    if data is None:
+        return {}
+    if not isinstance(data, dict):
+        raise ValueError(
+            f"{path} must contain a YAML mapping (top-level keys like a real "
+            f"{filename}), found {type(data).__name__}"
+        )
+    return data
+
+
+def merge_local_override(
+    generated: dict, local: dict | None, structural_keys: set[str]
+) -> tuple[dict, list[str], list[str]]:
+    """Field-level merge (PRIMER.md S10): every top-level key `local`
+    names overwrites the generated value for that key; a key it doesn't
+    name leaves the generated value untouched. Deliberately NOT a deep/
+    recursive merge -- an overridden `technique`/`heritage_object`/...
+    replaces the whole generated object for that key rather than merging
+    its sub-fields, matching the two use cases this exists for: fields
+    `build_md_cff()` never generates at all (`heritage_object`/`spatial`/
+    `temporal`) and a wholesale correction of a field the generic
+    Sketchfab-derived value got wrong -- not patching individual
+    sub-fields of a field that was half right.
+
+    Returns (merged, overridden_keys, structural_collisions):
+    - `overridden_keys`: every top-level key the local file names, sorted
+      -- reported in run()'s message so a surprising value in the
+      finished MD.cff/CITATION.cff is traceable to "the override set
+      this" without opening the local file (S10 decision: name which
+      fields, not just "an override was applied").
+    - `structural_collisions`: the subset of `overridden_keys` that is
+      also in `structural_keys` (see MD_CFF_STRUCTURAL_KEYS/
+      CITATION_CFF_STRUCTURAL_KEYS above) *and* whose local value
+      actually differs from the generated one -- run() turns a non-empty
+      list here into a Warning (`--strict`: hard fail)."""
+    if not local:
+        return generated, [], []
+    merged = dict(generated)
+    merged.update(local)
+    overridden = sorted(local.keys())
+    collisions = sorted(
+        key for key in overridden
+        if key in structural_keys and generated.get(key) != local[key]
+    )
+    return merged, overridden, collisions
+
+
 def build_description(info: dict) -> str:
     description = (info.get("description") or "").strip()
     if description:
@@ -363,14 +463,33 @@ def run(args: argparse.Namespace) -> tuple[bool, str]:
 
     enrichment = extract_enrichment(load_sketchfab_meta(info))
 
+    # PRIMER.md S10: read both override files up front -- a malformed one
+    # is a hard failure (module docstring), so check before doing any of
+    # the (cheap but pointless) build/validate work below.
+    try:
+        md_override = load_local_override(slug, "MD.cff")
+        citation_override = load_local_override(slug, "CITATION.cff")
+    except ValueError as exc:
+        return False, f"local metadata override invalid: {exc}"
+
     md_cff = build_md_cff(info, enrichment, publisher_label, publisher_id)
+    md_cff, md_overridden, md_collisions = merge_local_override(md_cff, md_override, MD_CFF_STRUCTURAL_KEYS)
+
+    # Validated *after* the merge (S10 decision): an override that produces
+    # an invalid MD.cff fails the same hard way a generator bug would --
+    # not a second, looser code path just because the values came from a
+    # human this time.
     schema_errors = validate_md_cff(md_cff)
     if schema_errors:
         # A schema-invalid MD.cff coming out of this function is a bug in
-        # this step, not a data-quality issue -- fail hard either way.
+        # this step (or, now, in the local override), not a data-quality
+        # issue -- fail hard either way.
         return False, "generated MD.cff failed schema validation:\n" + "\n".join(schema_errors)
 
     citation_cff = build_citation_cff(info, enrichment)
+    citation_cff, citation_overridden, citation_collisions = merge_local_override(
+        citation_cff, citation_override, CITATION_CFF_STRUCTURAL_KEYS
+    )
 
     write_yaml(md_cff, out_dir / "MD.cff")
     write_yaml(citation_cff, out_dir / "CITATION.cff")
@@ -378,13 +497,32 @@ def run(args: argparse.Namespace) -> tuple[bool, str]:
     message = f"wrote {slug} -> MD.cff, CITATION.cff"
     if enrichment:
         message += f" (enriched from sketchfab_meta.json: {', '.join(sorted(enrichment))})"
+    if md_overridden:
+        message += f" (MD.cff local override: {', '.join(md_overridden)})"
+    if citation_overridden:
+        message += f" (CITATION.cff local override: {', '.join(citation_overridden)})"
+
+    warn_reasons = []
     if info["todo_placeholders"]:
-        message = (
-            "Warning: " + message + " -- source_info.json has unresolved "
-            f"TODO placeholder(s): {', '.join(info['todo_placeholders'])} "
-            "(fix via `--only fetch` with --title/--creator/--licence, or "
-            "edit data/raw/source_info.json by hand)"
+        warn_reasons.append(
+            "source_info.json has unresolved TODO placeholder(s): "
+            f"{', '.join(info['todo_placeholders'])} (fix via `--only fetch` "
+            "with --title/--creator/--licence, or edit data/raw/source_info.json by hand)"
         )
+    if md_collisions:
+        warn_reasons.append(
+            f"data/local-metadata/{slug}/MD.cff overrides structural "
+            f"field(s) {', '.join(md_collisions)} -- almost always a "
+            "wrong-slug override, double-check that file"
+        )
+    if citation_collisions:
+        warn_reasons.append(
+            f"data/local-metadata/{slug}/CITATION.cff overrides structural "
+            f"field(s) {', '.join(citation_collisions)} -- almost always a "
+            "wrong-slug override, double-check that file"
+        )
+    if warn_reasons:
+        message = "Warning: " + message + " -- " + "; ".join(warn_reasons)
     return True, message
 
 

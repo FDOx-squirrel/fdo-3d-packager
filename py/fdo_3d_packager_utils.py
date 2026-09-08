@@ -22,6 +22,16 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 DATA_RAW = REPO_ROOT / "data" / "raw"
 DIST = REPO_ROOT / "dist"
 
+# Curated MD.cff/CITATION.cff field overrides (PRIMER.md S10) -- Flo's own
+# research (Wikidata object type, OSM spatial id, ChronOntology period,
+# condition assessment, ...) that `mdcff` (S5) has no way to derive itself.
+# Like DATA_RAW, this is real hand-authored data, never a repo artefact --
+# covered by the existing `data/*` line in .gitignore, no separate entry
+# needed. Unlike DATA_RAW, nothing in this repo ever creates it (the user
+# writes data/local-metadata/<slug>/MD.cff by hand), so no ensure_dirs()
+# entry for it either.
+LOCAL_METADATA = REPO_ROOT / "data" / "local-metadata"
+
 # Vendored, offline third-party assets (PRIMER.md A3: network access stays
 # confined to `fetch`). Currently just the trimmed 3DHOP viewer the `bundle`
 # step (S6) copies into every dist/<slug>.zip -- see assets/3dhop/NOTICE.md

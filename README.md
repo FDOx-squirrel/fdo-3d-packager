@@ -112,6 +112,11 @@ fdo-3d-packager/
 │                            source_info.json (S2/S3/S4/S5 handoff, see
 │                            step_fetch.py) and sketchfab_meta.json (audit +
 │                            mdcff enrichment source, --sketchfab only)
+├── data/local-metadata/     optional, hand-authored, gitignored (mdcff step,
+│                            S10) -- data/local-metadata/<slug>/MD.cff and/or
+│                            CITATION.cff, field-level overrides for values
+│                            mdcff can't derive itself (heritage_object,
+│                            spatial, temporal, ...)
 └── dist/                    products: dist/<slug>/model.obj+textures/+preview.png+
                              model.nxs+model.nxz+MD.cff+CITATION.cff, plus the
                              final dist/<slug>.zip the bundle step (S6) writes,
@@ -286,6 +291,40 @@ still used as a last-resort fallback). Earlier versions of this step
 guessed from Sketchfab's `license.slug` directly and got the slug format
 wrong (`"cc-by"` instead of the real `"by"`) -- corrected 2026-09-07 (5)
 against real API data.
+
+For fields `mdcff` has no way to derive itself -- `heritage_object`
+(object type/material/condition), `spatial` (findspot), `temporal`
+(period) -- drop a `data/local-metadata/<slug>/MD.cff` (and/or
+`CITATION.cff`) with just the top-level keys you want to set:
+
+```yaml
+heritage_object:
+  object_type:
+    label: Hogback stone
+    id: http://www.wikidata.org/entity/Q123456
+spatial:
+  label: Govan Old Parish Church
+  id: osm:node/11071361392
+temporal:
+  label: Early medieval
+  start: 900
+  end: 1100
+```
+
+`mdcff` merges this over the generated file field by field -- a key you
+name replaces the generated value outright (not a deep merge: an
+overridden `technique`/`heritage_object` replaces the whole generated
+object, it doesn't patch sub-fields), a key you don't name is left alone,
+so `keywords`/`technique`/... from the Sketchfab enrichment above still
+apply. No CLI flag needed (auto-detected from the slug), no schema
+change (the merged MD.cff is validated exactly like the purely generated
+one), and MD.cff/CITATION.cff overrides are independent -- either, both,
+or neither can be present. Overwriting a structural field (`fdo_type`/
+`md_cff_version`/`id` in MD.cff, `cff-version` in CITATION.cff) still
+works but prints a `Warning: ...` (`--strict`: failure) -- almost always
+a sign the override landed in the wrong slug's folder. This directory is
+gitignored: it holds real curated research data, never a repo artefact
+(see `PRIMER.md` A3/A5, S10).
 
 Once `mdcff` has run, `bundle` picks up `dist/<slug>/` automatically and
 needs no flags of its own:
