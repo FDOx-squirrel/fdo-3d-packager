@@ -2175,3 +2175,19 @@ Liste enthält ab jetzt nur, was tatsächlich noch offen ist.)*
 - **Weitere "Holy Wells"-Testkandidaten** (Wikidata-Query, 2026-09-07 im
   Chat geteilt, Liste nicht in diesem Dokument dupliziert) -- vier davon
   bereits real gefetcht (S8), der Rest offen für künftige Läufe.
+- **`fdo-squirrel`s Overview-Mermaid (`fdo_mermaid.py`) kennt `auxiliary`
+  nicht** -- `ROLE_STYLES_3D`/`role_order` (Zeile ~355/438) listen nur
+  `model`/`metadata`/`documentation`. Seit dem S18-S20-Rollen-Fix sind
+  `viewer/*` und `data/textures/*` korrekt `auxiliary`, tauchen aber
+  deswegen im `fdo_overview.png`/`.svg` gar nicht mehr auf -- bei CIIC 81
+  25 von 31 Dateien unsichtbar (Viewer + Texturen), real an den
+  hochgeladenen Diagrammen bestätigt (2026-09-09, nach dem Pin-Bump auf
+  `e538366`). Vor dem Fix waren Texturen wenigstens (falsch) unter
+  `documentation` sichtbar -- fürs Overview-Diagramm ein Rückschritt,
+  auch wenn das zugrundeliegende `fdo:role` jetzt stimmt. Die separate
+  "Files-and-roles"-Grafik (`fdo_files_roles_graph.py`/
+  `fdo_files_roles_common.py`) kennt `auxiliary` in ihrer eigenen
+  Rollen-Liste bereits -- vermutlich vollständig, nicht selbst geprüft.
+  Fix (vierten `ROLE_STYLES_3D`-Eintrag + `role_order` ergänzen) gehört
+  nach `fdo-squirrel`, eigener Chat -- relevant fürs Konferenz-Diagramm,
+  da CIIC 81 der Red-Thread-Showcase ist.
