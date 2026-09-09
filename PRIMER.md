@@ -219,6 +219,8 @@ Eigenschaften, an denen sich ein Lauf messen lässt:
 | Lokale Zusatzdateien (S12): Auto-Erkennung oder CLI-Flag? | Auto-Erkennung wie data/local-metadata/<slug>/ (S10) -- alles unter data/local-data/<slug>/ wird automatisch mitgenommen, kein neues CLI-Flag | 2026-09-09 (S12) |
 | Lokale Zusatzdateien (S12): Kollision mit model/textures/images | harter Abbruch, kein stilles Nebeneinander -- ein Unterordner unter data/local-data/<slug>/, dessen erstes Pfadsegment model/textures/images heisst, bricht bundle sofort ab. Gegen echte Fixture bestaetigt: klare Fehlermeldung, kein kaputtes ZIP | 2026-09-09 (S12), gegen CI-Fixture bestaetigt |
 | Lokale Zusatzdateien (S12): welche fdo:role bekommen sie? | keine eigene Klassifizierung, fdo-squirrels classification_rules.yaml entscheidet wie bei jeder anderen Datei auch -- an der Fixture (.jpg) real geprueft: landet auf "documentation", nicht auf dem generischen "data"-Fallback (anders als data/textures/*.jpeg, das an der textures/-Pfad-Regel scheitert, S7-Befund) -- die extensionsbasierte Regel greift hier offenbar korrekt | 2026-09-09 (S12), Befund |
+| fdo-squirrel-Pin gebumpt auf e538366 (S18-S20-Fixes) | Alle drei aus diesem Repo gemeldeten fdo-squirrel-Punkte gefixt und real gegen die CI-Fixture bestaetigt: classification_rules.yaml (data/model/model.mtl -> model, data/textures/*.jpeg -> auxiliary, viewer/* -> auxiliary, jetzt per path_prefix-Regeln, die vor den Extension-Regeln greifen), creators[].id jetzt tatsaechlich optional (resolve_id_label(), ersetzt das alte require_id_label()), kein JPG mehr neben PNG/SVG bei fdo_overview.*/fdo_ttl_snippet_*.*. Paketversion bleibt 0.3.1 (kein pyproject.toml-Bump) -- FDOx.yamls generator.version zeigt weiterhin nur die Paketversion, keinen Commit-Hash (bekannte Luecke, siehe oben). Wichtiger Nebenbefund beim Pin-Bumpen selbst: pip install -r requirements.txt zieht einen neuen Commit bei gleicher Paketversion nicht zuverlaessig nach, wenn fdo-squirrel in der Umgebung schon installiert ist -- pip install --upgrade --force-reinstall --no-deps mit der vollen git-URL noetig, sonst laeuft man unbemerkt gegen den alten Commit weiter | 2026-09-09 (S18-S20 upstream) |
+
 
 ### A5 Was in welchem Chat hochgeladen wird
 
@@ -2152,16 +2154,6 @@ Liste enthält ab jetzt nur, was tatsächlich noch offen ist.)*
   `fdo_type` und die domänenspezifischen `distributions[]`-Rollen
   anpassen. Kein Schritt in diesem Repo, bis das Schwester-Repo tatsächlich
   startet.
-- **`classification_rules.yaml`-Lücke in `fdo-squirrel`** -- `.mtl`,
-  `viewer/*.html`/`.js`/`.css`/`LICENSE.txt` und `data/textures/*` fallen
-  alle auf die generische Rolle `data`/`documentation` zurück statt
-  `model`/`auxiliary`, an echten Daten bestätigt (S7). Fix gehört nach
-  `fdo-squirrel/fdo/classification_rules.yaml`, separater Chat (A4/A5).
-- **`fdo-squirrel`s Crosswalk verlangt `creators[].id` entgegen dem
-  eigenen Schema**, das `id` dort ausdrücklich optional nennt
-  (`idLabelEntityOptionalId`) -- trifft jeden echten `--local`-Fetch ohne
-  `--creator-profile` (S9-Fund). Gleiches Muster: Fix gehört nach
-  `fdo-squirrel`, separater Chat.
 - **Zenodo-Nachbereitung bleibt Handarbeit** (Chat-Entscheidung
   2026-09-07): `MD.cff.id` durch die echte DOI ersetzen und einen
   `identifiers[]`-Eintrag (`{scheme: doi, value: ...}`, Muster
@@ -2183,18 +2175,3 @@ Liste enthält ab jetzt nur, was tatsächlich noch offen ist.)*
 - **Weitere "Holy Wells"-Testkandidaten** (Wikidata-Query, 2026-09-07 im
   Chat geteilt, Liste nicht in diesem Dokument dupliziert) -- vier davon
   bereits real gefetcht (S8), der Rest offen für künftige Läufe.
-- **`fdo-squirrel`s Diagramm-Output ist uneinheitlich JPG+PNG+SVG vs. nur
-  PNG+SVG** -- an den echten CIIC-81/Freshford-Bundles (2026-09-09,
-  hochgeladene 7-Zip-Listings) bestätigt: `fdo_overview.*` und die drei
-  `fdo_ttl_snippet_*.*`-Karten kommen als `.jpg`+`.png`+`.svg` (JPG
-  spürbar die größte Datei, z. B. `fdo_ttl_snippet_metadata.jpg`
-  454 KB vs. `.png` 295 KB vs. `.svg` 5 KB), während
-  `fdo_files_roles_graph`/`fdo_md_cff`/`fdo_md_cff_graph` konsequent nur
-  `.png`+`.svg` bekommen. Quelle im Code bestätigt, nicht nur vermutet:
-  `fdo_ttl_snippet.py` (Zeile ~383) schreibt für jede Karte explizit
-  `.png` **und** `.jpg`; `fdo_finalize.py`s `render_mermaid_to_jpg()`
-  erzeugt laut eigenem Docstring bewusst ein PNG neben dem JPG -- zwei
-  unterschiedliche Code-Pfade, keine erkennbare Absicht hinter der
-  Inkonsistenz. Flos Wunsch: nur PNG+SVG, kein JPG. Fix gehört nach
-  `fdo-squirrel` (`fdo_ttl_snippet.py`, `fdo_finalize.py`), eigener Chat
-  -- nicht hier, dieses Repo generiert diese Dateien nicht selbst.

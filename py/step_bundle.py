@@ -16,12 +16,11 @@ Target layout (from fdo-squirrel/example_fdo/, confirmed 2026-09-03):
                              for provenance/pin and what was trimmed.
 
 The viewer travels inside this ZIP (PRIMER.md A4, decided 2026-09-03).
-classification_rules.yaml has no rule for .html/.js/.css (and, found while
-implementing this step: none for .mtl either) -- how fdo-squirrel handles
-that (S7, the round-trip step) is a real open question, to be fixed
-upstream in fdo-squirrel if it turns out to matter, not worked around here
-by pre-populating distributions[] ourselves (A4: that pre-population is
-fdo-squirrel's job, not this repo's). See PRIMER.md Teil D.
+**Fixed upstream (fdo-squirrel S18-S20, commit `e538366`, 2026-09-09):**
+classification_rules.yaml now has path-prefix rules for `.html`/`.js`/
+`.css` under `viewer/` and for `.mtl` -- see PRIMER.md Teil A4/Teil D and
+step_build_fdo.py's docstring for the before/after. Nothing to change
+here; this step never pre-populated `distributions[]` itself (A4).
 
 Offline (PRIMER.md A3): reads dist/<slug>/ (written by convert/nexus/mdcff,
 S3-S5) and assets/3dhop/ (vendored, not live-fetched), no network. Runs

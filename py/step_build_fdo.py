@@ -45,6 +45,15 @@ separate fdo-squirrel-repo chat, not part of this one (PRIMER.md A5: one
 repo per chat). This step's own job is the round trip and the finding, not
 the fix.
 
+**Fixed upstream (fdo-squirrel S18-S20, commit `e538366`, pin bumped
+2026-09-09):** confirmed against the same three cases, now correct --
+`data/model/model.mtl` -> "model", `data/textures/*.jpeg` -> "auxiliary",
+`viewer/*` -> "auxiliary". Same commit also drops the `creators[].id`
+hard-requirement (see `step_mdcff.py`) and stops writing JPG diagrams
+alongside the PNG/SVG ones (nothing to change on this repo's side for
+either, both were entirely fdo-squirrel's own behaviour). See PRIMER.md
+Teil A4 for the pin-bump entry and Teil D for the now-closed items.
+
 Completeness gate: dist/<slug>.zip must already exist (`bundle`, S6, must
 have run). `--slug` picks which one -- resolved against dist/<slug>.zip
 itself (`fdo_3d_packager_utils.py:resolve_bundle_slug()`), deliberately
