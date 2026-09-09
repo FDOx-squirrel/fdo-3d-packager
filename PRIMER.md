@@ -220,6 +220,8 @@ Eigenschaften, an denen sich ein Lauf messen lässt:
 | Lokale Zusatzdateien (S12): Kollision mit model/textures/images | harter Abbruch, kein stilles Nebeneinander -- ein Unterordner unter data/local-data/<slug>/, dessen erstes Pfadsegment model/textures/images heisst, bricht bundle sofort ab. Gegen echte Fixture bestaetigt: klare Fehlermeldung, kein kaputtes ZIP | 2026-09-09 (S12), gegen CI-Fixture bestaetigt |
 | Lokale Zusatzdateien (S12): welche fdo:role bekommen sie? | keine eigene Klassifizierung, fdo-squirrels classification_rules.yaml entscheidet wie bei jeder anderen Datei auch -- an der Fixture (.jpg) real geprueft: landet auf "documentation", nicht auf dem generischen "data"-Fallback (anders als data/textures/*.jpeg, das an der textures/-Pfad-Regel scheitert, S7-Befund) -- die extensionsbasierte Regel greift hier offenbar korrekt | 2026-09-09 (S12), Befund |
 | fdo-squirrel-Pin gebumpt auf e538366 (S18-S20-Fixes) | Alle drei aus diesem Repo gemeldeten fdo-squirrel-Punkte gefixt und real gegen die CI-Fixture bestaetigt: classification_rules.yaml (data/model/model.mtl -> model, data/textures/*.jpeg -> auxiliary, viewer/* -> auxiliary, jetzt per path_prefix-Regeln, die vor den Extension-Regeln greifen), creators[].id jetzt tatsaechlich optional (resolve_id_label(), ersetzt das alte require_id_label()), kein JPG mehr neben PNG/SVG bei fdo_overview.*/fdo_ttl_snippet_*.*. Paketversion bleibt 0.3.1 (kein pyproject.toml-Bump) -- FDOx.yamls generator.version zeigt weiterhin nur die Paketversion, keinen Commit-Hash (bekannte Luecke, siehe oben). Wichtiger Nebenbefund beim Pin-Bumpen selbst: pip install -r requirements.txt zieht einen neuen Commit bei gleicher Paketversion nicht zuverlaessig nach, wenn fdo-squirrel in der Umgebung schon installiert ist -- pip install --upgrade --force-reinstall --no-deps mit der vollen git-URL noetig, sonst laeuft man unbemerkt gegen den alten Commit weiter | 2026-09-09 (S18-S20 upstream) |
+| fdo-squirrel-Pin gebumpt auf 3868e1e (S21-Fixes) | Beide aus dem Handoff-MD gemeldeten Diagramm-Punkte gefixt und real gegen die CI-Fixture bestaetigt: auxiliary-Rolle jetzt in ROLE_STYLES_3D/role_order (fdo_mermaid.py), taucht im fdo_overview.mermaid als eigener AUX-Knoten auf; _normalize_license() erkennt jetzt auch creativecommons.org-URLs (Fixture-Lizenz zeigt korrekt CC-BY-4.0 statt der rohen URL); bare-?-Platzhalter durch *n/a* ersetzt (S21-Commit-Message erwaehnt das zusaetzlich, nicht separat angefordert, aber willkommen). Dateizaehler jetzt exakt (25 statt 24 auxiliary lt. der anderen Chat-Zusammenfassung) | 2026-09-09 (S21 upstream) |
+
 
 
 ### A5 Was in welchem Chat hochgeladen wird
@@ -2175,19 +2177,3 @@ Liste enthält ab jetzt nur, was tatsächlich noch offen ist.)*
 - **Weitere "Holy Wells"-Testkandidaten** (Wikidata-Query, 2026-09-07 im
   Chat geteilt, Liste nicht in diesem Dokument dupliziert) -- vier davon
   bereits real gefetcht (S8), der Rest offen für künftige Läufe.
-- **`fdo-squirrel`s Overview-Mermaid (`fdo_mermaid.py`) kennt `auxiliary`
-  nicht** -- `ROLE_STYLES_3D`/`role_order` (Zeile ~355/438) listen nur
-  `model`/`metadata`/`documentation`. Seit dem S18-S20-Rollen-Fix sind
-  `viewer/*` und `data/textures/*` korrekt `auxiliary`, tauchen aber
-  deswegen im `fdo_overview.png`/`.svg` gar nicht mehr auf -- bei CIIC 81
-  25 von 31 Dateien unsichtbar (Viewer + Texturen), real an den
-  hochgeladenen Diagrammen bestätigt (2026-09-09, nach dem Pin-Bump auf
-  `e538366`). Vor dem Fix waren Texturen wenigstens (falsch) unter
-  `documentation` sichtbar -- fürs Overview-Diagramm ein Rückschritt,
-  auch wenn das zugrundeliegende `fdo:role` jetzt stimmt. Die separate
-  "Files-and-roles"-Grafik (`fdo_files_roles_graph.py`/
-  `fdo_files_roles_common.py`) kennt `auxiliary` in ihrer eigenen
-  Rollen-Liste bereits -- vermutlich vollständig, nicht selbst geprüft.
-  Fix (vierten `ROLE_STYLES_3D`-Eintrag + `role_order` ergänzen) gehört
-  nach `fdo-squirrel`, eigener Chat -- relevant fürs Konferenz-Diagramm,
-  da CIIC 81 der Red-Thread-Showcase ist.
