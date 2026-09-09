@@ -18,6 +18,10 @@
         onwards) for exactly the model(s) just fetched -- --slug/--all-slugs
         are not needed (and are ignored with a note if passed) since fetch
         already tells the rest of the run which slug(s) to use.
+    python main.py --from fetch --sketchfab "..." --publisher-label ... --publish-only
+        same, but once build_fdo confirms the round trip, delete every
+        intermediate for that slug except dist/<slug>_release/
+        <slug>-fdo-bundle.zip -- the one self-contained deliverable.
 
 See PRIMER.md for what each step does and why. Steps are implemented one
 module per step under py/, each independently runnable
@@ -34,7 +38,12 @@ import time
 from dataclasses import dataclass, field
 from typing import Callable, Optional
 
-from py.fdo_3d_packager_utils import discover_bundle_slugs, discover_slugs
+from py.fdo_3d_packager_utils import (
+    discover_bundle_slugs,
+    discover_slugs,
+    publish_only_cleanup,
+    resolve_bundle_slug,
+)
 
 
 @dataclass(frozen=True)
@@ -80,6 +89,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
     ap.add_argument("--skip", metavar="STEP", help="Run everything but this step.")
     ap.add_argument("--dry-run", action="store_true", help="Print the plan, run nothing.")
     ap.add_argument("--strict", action="store_true", help="Warnings become errors (this is what CI runs).")
+    ap.add_argument("--publish-only", action="store_true",
+                     help="After a run that includes build_fdo succeeds, delete dist/<slug>/, "
+                          "dist/<slug>.zip and everything in dist/<slug>_release/ except "
+                          "<slug>-fdo-bundle.zip (S11) -- that bundle is already self-contained, "
+                          "nothing is lost. Opt-in; the default keeps every intermediate, which "
+                          "--from/--skip reruns depend on. No-op (with a note) if build_fdo isn't "
+                          "part of this run.")
 
     # Which fetched model(s) to run the selected step(s) against
     # (convert/nexus/mdcff, S3-S5; bundle/build_fdo once they exist).
@@ -235,6 +251,28 @@ def run_selection_once(selection: list[str], args: argparse.Namespace) -> tuple[
     print("\nTiming:")
     for step_id, elapsed in timings:
         print(f"  {step_id:<10} {elapsed:6.2f}s  {100 * elapsed / total:5.1f}%")
+
+    if getattr(args, "publish_only", False):
+        if "build_fdo" in selection:
+            # Resolved *before* publish_only_cleanup runs -- it deletes
+            # dist/<slug>.zip, which is what this resolution reads.
+            slug = resolve_bundle_slug(getattr(args, "slug", None))
+            removed = publish_only_cleanup(slug)
+            if removed:
+                print(
+                    f"[publish-only] {slug}: removed {len(removed)} intermediate path(s), "
+                    f"kept dist/{slug}_release/{slug}-fdo-bundle.zip"
+                )
+                for path in removed:
+                    print(f"  - {path}")
+            else:
+                print(f"[publish-only] {slug}: nothing to remove (already clean)")
+        else:
+            print(
+                "[publish-only] ignored: build_fdo not part of this run, nothing to publish yet",
+                file=sys.stderr,
+            )
+
     return None, had_warning
 
 

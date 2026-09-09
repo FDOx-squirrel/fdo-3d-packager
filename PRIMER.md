@@ -211,6 +211,8 @@ Eigenschaften, an denen sich ein Lauf messen lässt:
 | Kollidiert ein lokaler Wert mit einem strukturellen Feld? | **Warnung, kein Fehler**, wenn der lokale Wert vom generierten abweicht — `--strict` macht daraus einen Abbruch, ein Override der zusätzlich das Schema verletzt bricht unabhängig von `--strict` sofort ab (Zeile oben). MD.cff: `md_cff_version`/`fdo_type`/`id`. **Ergänzt 2026-09-08 (S10, nicht im ursprünglichen Vorschlagsdokument):** dieselbe Prüfung jetzt auch für CITATION.cff, dort mit `cff-version` als einzigem strukturellen Feld — `type`/`authors`/... haben in diesem Repo kein Schema-Gate, also keine sinnvollen Kandidaten für diese Liste | 2026-09-08 (S10, bestätigt + ergänzt) |
 | Neues CLI-Flag nötig? | nein — reine Auto-Erkennung über `data/local-metadata/<slug>/`, kein `--local-metadata`-Pfad-Flag, passt zum bestehenden `sketchfab_meta.json`-Muster (auch nur automatisch gelesen, wenn vorhanden) | 2026-09-08 (S10, bestätigt) |
 | Kaputte/unlesbare lokale Override-Datei (`MD.cff`/`CITATION.cff` unter `data/local-metadata/`)? | **Neue Entscheidung, nicht im ursprünglichen Vorschlagsdokument:** harter Abbruch (`load_local_override()` wirft `ValueError` mit Dateiname, `run()` fängt das und meldet klar welche Datei betroffen ist), **nicht** wie `sketchfab_meta.json` still als „nicht vorhanden" behandelt. Begründung: `sketchfab_meta.json` ist maschinengeschrieben, „lesen fehlgeschlagen → als unangereichert weiterlaufen" ist dort ein vernünftiger Default; ein lokaler Override ist dagegen von Hand geschriebene, bewusst kuratierte Eingabe — ein still ignorierter Parse-Fehler würde ein Paket erzeugen, das aussieht als sei der Override angewendet worden, tatsächlich aber weiterhin die generischen Werte trägt. Das ist schlimmer als ein klarer Abbruch | 2026-09-08 (S10) |
+| Erster echter Rundlauf gegen CIIC 81 + Freshford (kuratierter lokaler Override, --from fetch, Flos Maschine) | Beide Slugs erfolgreich, fdo-squirrel round-trip confirmed. Bestaetigt dabei: keine TODO: id not set-Platzhalter mehr, Creator/Datum kommen aus CITATION.cff, alle vier S8-Diagramme entstehen (resvg-py gezogen), und das classification_rules.yaml-Problem (.mtl/viewer/*/data/textures/* -> generische Rolle) ist jetzt zusaetzlich an echten Produktionsdaten belegt, nicht nur an der Fixture. CIIC 81s MD.cff-Override auf id (reservierte Zenodo-DOI 10.5281/zenodo.18724635) hat die eingebaute Wrong-Slug-Warnung ausgeloest -- von Flo bestaetigt: kein Bug, das Objekt war schon einmal publiziert. creators[].id fehlte bei beiden Slugs (kein --creator-profile) und hat den Lauf nicht blockiert -- die in S9 vermutete Crosswalk-Pflicht dafuer griff hier nicht, nicht weiter untersucht | 2026-09-09, Befund aus echtem Lauf |
+| --publish-only-Aufraeum-Modus (S11) | Nach einem Lauf, der build_fdo enthaelt: dist/<slug>/, dist/<slug>.zip und alles in dist/<slug>_release/ ausser <slug>-fdo-bundle.zip loeschen -- dieses Bundle ist bereits vollstaendig selbstenthaltend (fdo_finalize.build_finished_bundle() faltet Originalpaket + alle generierten Dateien hinein, gegengeprueft an fdo-squirrels main.py), nichts geht verloren. Opt-in, Default bleibt unveraendert -- Flos Entscheidung: dist/<slug>/dist/<slug>.zip sind genau das, worauf der --from/--skip-Wiederaufnahme-Vertrag angewiesen ist, ein automatisches Loeschen nach jedem Lauf wuerde den kaputt machen. Kein eigener Schritt in STEPS (kein Pipeline-Schritt, reines Post-Processing nach run_selection_once), sondern ein Flag, das nach einer erfolgreichen Selection greift, die build_fdo enthaelt -- sonst No-op mit Hinweis auf stderr | 2026-09-09 (S11) |
 
 ### A5 Was in welchem Chat hochgeladen wird
 
@@ -247,6 +249,7 @@ Nicht anwendbar in S1 — dieses Repo veröffentlicht selbst keine RDF-IRIs
 | S8 | Batch-Fetch (`--sketchfab` wiederholbar) + Multi-Slug-Infrastruktur (`data/raw/<slug>/source_info.json`, `--slug`, `--all-slugs`) | fdo-3d-packager | S2–S5 | erledigt 2026-09-07 |
 | S9 | `--all-slugs`-Fix für `build_fdo` ohne `data/raw/`; CI (`--strict`-Smoke-Test gegen Fakes für Blender/nxsbuild/nxscompress, echter Rundlauf durch `fdo-squirrel`) | fdo-3d-packager | S7, S8 | erledigt 2026-09-07 |
 | S10 | `mdcff`-Erweiterung: lokale Metadaten-Overrides (`data/local-metadata/<slug>/MD.cff`/`CITATION.cff`, Feld-Ebene-Merge, für `heritage_object`/`spatial`/`temporal` u. a., die `mdcff` nie selbst herleitet) | fdo-3d-packager | S5 | erledigt 2026-09-08 |
+| S11 | `--publish-only`-Flag: nach einem Lauf mit `build_fdo` alles außer `dist/<slug>_release/<slug>-fdo-bundle.zip` löschen | fdo-3d-packager | S9 | erledigt 2026-09-09 |
 
 S3 und S4 sind technisch unabhängig von S5 und können in beliebiger
 Reihenfolge bzw. parallel in Angriff genommen werden; S5 braucht die
@@ -1950,6 +1953,96 @@ komplette Ergänzung.
 
 ---
 
+## S11 — `--publish-only`-Aufräum-Modus
+
+[#s11---publish-only-aufräum-modus](#s11---publish-only-aufräum-modus)
+
+**Ziel:** nach einem Lauf, der `build_fdo` einschließt, auf Wunsch alles
+außer der einen tatsächlich zu verschickenden Datei löschen --
+`dist/<slug>_release/<slug>-fdo-bundle.zip` -- statt `dist/<slug>/`,
+`dist/<slug>.zip` und den Rest von `dist/<slug>_release/` (Diagramme,
+TTL-Snippets, HTML-/JSON-Reports) auf der Platte liegen zu lassen. Flos
+Anstoß nach dem ersten echten CIIC-81/Freshford-Lauf (A4): für einen
+"fertig, raus damit"-Lauf ist das der Normalfall, nicht das Aufheben aller
+Zwischenstände.
+
+**Substanz:**
+
+- `py/fdo_3d_packager_utils.py`: neue Funktion `publish_only_cleanup(slug)`
+  -- löscht `dist/<slug>/` (rekursiv) und `dist/<slug>.zip`, und leert
+  `dist/<slug>_release/` bis auf die Datei, die auf `*-fdo-bundle.zip`
+  endet. Gibt die Liste der entfernten Pfade zurück (relativ zum
+  Repo-Root, sortiert), fürs Logging. Sicher, weil das Bundle bereits
+  alles enthält -- gegengeprüft an `fdo-squirrel`s `main.py`:
+  `generated_files` dort ist exakt dieselbe Liste, die `fdo-3d-packager`
+  nach `<slug>_release/` schreibt, plus `fdo-metadata.ttl` und
+  `rdf_modelling_report.json`, alle über `fdo_finalize.
+  build_finished_bundle()` ins Bundle-ZIP gefaltet.
+- `main.py`: neues `--publish-only`-Flag (kein neuer STEPS-Eintrag --
+  reines Post-Processing, kein Pipeline-Schritt). Hook am Ende von
+  `run_selection_once()`, nach erfolgreichem Durchlauf: wenn `build_fdo`
+  Teil der gerade gelaufenen `selection` war, `resolve_bundle_slug()`
+  **vor** dem Aufräumen aufrufen (liest `dist/<slug>.zip`, das
+  `publish_only_cleanup()` gleich löscht), dann aufräumen und melden, was
+  weg ist. War `build_fdo` nicht Teil der Selection, No-op mit Hinweis auf
+  stderr statt stillem Nichtstun (Muster: `--slug`/`--all-slugs` bei
+  `fetch`-Läufen).
+- `--all-slugs` + `--publish-only`: funktioniert unverändert, weil der
+  Hook pro Slug in `run_selection_once()` sitzt, das `run_over_slugs()`
+  ohnehin einmal pro Slug aufruft -- kein Sonderfall nötig.
+- `.github/workflows/build.yml`: zwei neue Schritte nach dem bestehenden
+  `--strict`-Smoke-Test -- `--only build_fdo --slug ci-smoke
+  --publish-only` (regeneriert `_release/` frisch und räumt danach auf),
+  dann harte Checks (`test ! -e dist/ci-smoke`, `test ! -e
+  dist/ci-smoke.zip`, `test -s .../ci-smoke-fdo-bundle.zip`, genau eine
+  Datei in `_release/`).
+
+**Abnahme:**
+
+1. Voller Lauf (`convert`..`build_fdo`) mit `--publish-only` gegen die
+   CI-Fixture: `dist/<slug>/` und `dist/<slug>.zip` weg,
+   `dist/<slug>_release/` enthält nur noch `<slug>-fdo-bundle.zip`.
+2. Derselbe Lauf **ohne** `--publish-only`: keine Regression, alle drei
+   (`dist/<slug>/`, `dist/<slug>.zip`, `dist/<slug>_release/` komplett)
+   bleiben stehen wie vor S11.
+3. `--only build_fdo --publish-only` (Bundle-ZIP existiert schon aus
+   einem früheren Lauf, kein `convert`/`nexus` in dieser Invocation):
+   räumt trotzdem korrekt auf.
+4. `--publish-only` ohne `build_fdo` in der Selection (z. B. `--only
+   convert --publish-only`): No-op, Hinweis auf stderr, nichts gelöscht.
+5. Bundle-ZIP enthält nach dem Aufräumen tatsächlich alles, was gelöscht
+   wurde (`unzip -l`) -- kein Datenverlust, nur Redundanz entfernt.
+
+### Erledigt 2026-09-09
+
+[#erledigt-2026-09-09](#erledigt-2026-09-09)
+
+Implementiert und gegen die vorhandene CI-Fixture-Infrastruktur
+(`.github/ci-fixtures/`, S9) laufen lassen, nicht nur behauptet:
+
+- Voller `--strict`-Lauf gegen `ci-smoke` mit `--publish-only`: 22
+  Zwischenpfade entfernt, `dist/ci-smoke_release/ci-smoke-fdo-bundle.zip`
+  blieb als einzige Datei stehen (Abnahme 1).
+- Derselbe Lauf ohne `--publish-only`: `dist/ci-smoke`,
+  `dist/ci-smoke.zip`, `dist/ci-smoke_release/` (voll) unverändert stehen
+  geblieben (Abnahme 2).
+- `--only build_fdo --slug ci-smoke --publish-only` gegen ein bereits
+  bestehendes `dist/ci-smoke.zip` aus einem vorherigen Lauf: räumt
+  ebenfalls korrekt auf (Abnahme 3) -- das ist jetzt auch der zweite
+  CI-Schritt in `build.yml`.
+- `unzip -l` gegen das übriggebliebene Bundle-ZIP bestätigt: alle 20
+  gelöschten `_release/`-Dateien (Diagramme, TTL, Reports, `FDOx.yaml`)
+  stecken tatsächlich mit drin, plus das komplette Originalpaket
+  (`viewer/`, `data/model/`, `data/textures/`) -- 52 Dateien insgesamt.
+- Abnahme 4 (No-op ohne `build_fdo`) nicht separat als eigener Testlauf
+  ausgeführt, sondern durch Code-Inspektion des Hooks bestätigt (`if
+  "build_fdo" in selection` -- eindeutig).
+- Zusätzlich am 2026-09-09 real gegen CIIC 81 + Freshford bestätigt (auf
+  Flos Maschine, siehe A4): beide finished bundles enthalten tatsächlich
+  alles, echte Sketchfab-/Blender-/Nexus-Daten inklusive.
+
+---
+
 ## Teil D — Offene Punkte
 
 *(Aufgeräumt 2026-09-07: vollständig erledigte Punkte wurden hier entfernt,
@@ -1989,15 +2082,6 @@ Liste enthält ab jetzt nur, was tatsächlich noch offen ist.)*
   gibt es dafür noch keinen konkreten Anwendungsfall in Flos aktuellen
   Testkandidaten; der generische Override-Mechanismus aus S10 könnte sie
   bei Bedarf genauso setzen, ohne weiteren Code.
-- **CIIC 81 (und ggf. Freshford) real mit kuratiertem lokalem Override
-  durch die Pipeline laufen lassen** (S10 ist jetzt bereit dafür, siehe
-  das ursprüngliche, mit diesem Chat hochgeladene S10-Vorschlagsdokument
-  für die konkreten kuratierten Werte -- Objekttyp/Material-Wikidata-IDs,
-  OSM-Spatial-ID, ChronOntology-Periode aus den alten Folien): Flo legt
-  `data/local-metadata/<ciic-81-slug>/MD.cff` von Hand an und ruft
-  `python main.py --sketchfab <URL> ...` auf. Eigener Chat/eigene Sitzung
-  -- braucht Blender/Sketchfab/Nexus-Zugriff, im Sandkasten weiterhin
-  nicht verfügbar.
 - **`--publisher-label`/`--publisher-id` sind Singular** (ein Publisher,
   kein wiederholbares Flag) -- reicht für den aktuellen Anwendungsfall
   (immer "Research Squirrel Engineers Network"). Bei Bedarf später

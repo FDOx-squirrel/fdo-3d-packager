@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -187,6 +188,60 @@ def resolve_bundle_slug(explicit: str | None) -> str:
         f"multiple bundles found under dist/ ({', '.join(slugs)}) -- pass --slug to pick one, "
         "or --all-slugs to run every one of them"
     )
+
+
+def publish_only_cleanup(slug: str) -> list[str]:
+    """--publish-only (S11): after a full run has confirmed the round trip
+    through build_fdo, delete every intermediate this pipeline produced
+    for `slug` except the one thing meant to actually leave the machine --
+    dist/<slug>_release/<slug>-fdo-bundle.zip.
+
+    Safe to do: that bundle is already self-contained (original package +
+    every generated file -- fdo-squirrel's fdo_finalize.build_finished_
+    bundle()) and therefore holds a copy of everything dist/<slug>/,
+    dist/<slug>.zip and the rest of dist/<slug>_release/ (diagrams, TTL
+    snippets, the HTML/JSON reports) still have -- confirmed by reading
+    fdo-squirrel's own main.py: `generated_files` there is exactly the
+    same list fdo-3d-packager writes into <slug>_release/, plus
+    fdo-metadata.ttl and rdf_modelling_report.json, all folded into the
+    bundle ZIP by name.
+
+    Opt-in and only after a full run (see main.py's hook: this is called
+    only when `build_fdo` was part of the selection that just succeeded)
+    -- default runs keep every intermediate, because dist/<slug>/ and
+    dist/<slug>.zip are exactly what the --from/--skip resumability
+    contract (PRIMER.md A3) depends on existing between invocations. This
+    is for a genuine "done, ship it" run, not the default.
+
+    Returns the list of removed paths (relative to the repo root, sorted)
+    so the caller can report what happened -- an empty list means there
+    was nothing to remove (already clean, e.g. a repeated --publish-only
+    call).
+    """
+    removed: list[str] = []
+
+    raw_dir = DIST / slug
+    if raw_dir.exists():
+        shutil.rmtree(raw_dir)
+        removed.append(str(raw_dir.relative_to(REPO_ROOT)))
+
+    zip_path = DIST / f"{slug}.zip"
+    if zip_path.exists():
+        zip_path.unlink()
+        removed.append(str(zip_path.relative_to(REPO_ROOT)))
+
+    release_dir = DIST / f"{slug}_release"
+    if release_dir.exists():
+        for p in release_dir.iterdir():
+            if p.name.endswith("-fdo-bundle.zip"):
+                continue  # the one file --publish-only exists to keep
+            if p.is_dir():
+                shutil.rmtree(p)
+            else:
+                p.unlink()
+            removed.append(str(p.relative_to(REPO_ROOT)))
+
+    return sorted(removed)
 
 
 # Wavefront MTL texture-map directives whose last whitespace-separated token

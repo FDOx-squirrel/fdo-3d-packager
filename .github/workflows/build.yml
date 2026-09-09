@@ -59,3 +59,13 @@ jobs:
 
       - name: Confirm fdo-metadata.ttl was actually produced
         run: test -s dist/ci-smoke_release/fdo-metadata.ttl
+
+      - name: Re-run build_fdo with --publish-only (S11) and confirm cleanup
+        run: python main.py --only build_fdo --slug ci-smoke --publish-only
+
+      - name: Confirm only the finished bundle survived
+        run: |
+          test ! -e dist/ci-smoke
+          test ! -e dist/ci-smoke.zip
+          test -s dist/ci-smoke_release/ci-smoke-fdo-bundle.zip
+          [ "$(find dist/ci-smoke_release -mindepth 1 | wc -l)" -eq 1 ]
