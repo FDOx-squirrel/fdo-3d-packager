@@ -222,6 +222,8 @@ Eigenschaften, an denen sich ein Lauf messen lässt:
 | fdo-squirrel-Pin gebumpt auf e538366 (S18-S20-Fixes) | Alle drei aus diesem Repo gemeldeten fdo-squirrel-Punkte gefixt und real gegen die CI-Fixture bestaetigt: classification_rules.yaml (data/model/model.mtl -> model, data/textures/*.jpeg -> auxiliary, viewer/* -> auxiliary, jetzt per path_prefix-Regeln, die vor den Extension-Regeln greifen), creators[].id jetzt tatsaechlich optional (resolve_id_label(), ersetzt das alte require_id_label()), kein JPG mehr neben PNG/SVG bei fdo_overview.*/fdo_ttl_snippet_*.*. Paketversion bleibt 0.3.1 (kein pyproject.toml-Bump) -- FDOx.yamls generator.version zeigt weiterhin nur die Paketversion, keinen Commit-Hash (bekannte Luecke, siehe oben). Wichtiger Nebenbefund beim Pin-Bumpen selbst: pip install -r requirements.txt zieht einen neuen Commit bei gleicher Paketversion nicht zuverlaessig nach, wenn fdo-squirrel in der Umgebung schon installiert ist -- pip install --upgrade --force-reinstall --no-deps mit der vollen git-URL noetig, sonst laeuft man unbemerkt gegen den alten Commit weiter | 2026-09-09 (S18-S20 upstream) |
 | fdo-squirrel-Pin gebumpt auf 3868e1e (S21-Fixes) | Beide aus dem Handoff-MD gemeldeten Diagramm-Punkte gefixt und real gegen die CI-Fixture bestaetigt: auxiliary-Rolle jetzt in ROLE_STYLES_3D/role_order (fdo_mermaid.py), taucht im fdo_overview.mermaid als eigener AUX-Knoten auf; _normalize_license() erkennt jetzt auch creativecommons.org-URLs (Fixture-Lizenz zeigt korrekt CC-BY-4.0 statt der rohen URL); bare-?-Platzhalter durch *n/a* ersetzt (S21-Commit-Message erwaehnt das zusaetzlich, nicht separat angefordert, aber willkommen). Dateizaehler jetzt exakt (25 statt 24 auxiliary lt. der anderen Chat-Zusammenfassung). **Final bestaetigt 2026-09-09** an den echten gerenderten `fdo_overview.png` fuer beide Slugs (Flos Maschine, `mmdc` lokal) -- nicht nur an der Mermaid-Quelle im Sandkasten: CIIC 81 und Freshford zeigen beide exakt 32 Dateien (4 model + 2 metadata + 1 documentation + 25 auxiliary), Freshford mit `CC-BY-4.0` statt roher URL, `v*n/a*` statt `?`. Damit ist die komplette S18-S21-Kette (Rollen, `creators[].id`, kein JPG, Overview-Diagramm) end-to-end an Produktionsdaten verifiziert. `fdo-3d-packager` hat damit keine offenen Punkte mehr, die den `fdo-squirrel`-S10-Release blockieren wuerden | 2026-09-09 (S21 upstream) |
 | fdo-squirrel v1.0.0 released -- Pin auf Tag statt Commit-Hash umgestellt | `fdo-squirrel` hat sein erstes echtes Release (`v1.0.0`, Commit `48bbf4d`, reiner Versions-Bump ueber dem bereits getesteten `3868e1e`, keine funktionalen Aenderungen). Requirements.txt zeigt jetzt auf `fdo-squirrel@v1.0.0` statt einen nackten Commit-Hash -- **Aenderung am bisherigen "immer Commit-Hash"-Muster (A4, "Gepinnte Laufzeit")**, Flos Entscheidung: ein Tag ist genauso fix wie ein Commit-Hash, aber lesbarer, jetzt wo es einen echten Release gibt. Nebeneffekt real bestaetigt: `FDOx.yaml`s `generator.version` zeigt jetzt `1.0.0` statt der bisher wenig aussagekraeftigen `0.3.1` -- die frueher notierte Luecke ("kein Commit im Output erkennbar") ist damit fuer Releases praktisch geschlossen, auch ohne eigene Aenderung an `fdo_manifest.py` | 2026-09-09 |
+| Was bedeutet "Release" fuer fdo-3d-packager selbst (S13)? | v1.0.0, wie bei fdo-squirrel -- soll den Code-Stand dokumentieren, der CIIC 81 + Freshford erzeugt hat, und ueber die GitHub-Zenodo-Integration einen Software-DOI bekommen (Archivierung). Kein PyPI-Paket, kein main.py-Schritt -- dieses Repo hat keine Downstream-Konsumenten, die einen Pin brauchen, anders als fdo-squirrel. CITATION.cff (Version, Datum, identifiers-Platzhalter fuer die DOI) ist der einzige Deliverable-Unterschied zum jetzigen Stand | 2026-09-09 (S13) |
+
 
 
 
@@ -263,6 +265,7 @@ Nicht anwendbar in S1 — dieses Repo veröffentlicht selbst keine RDF-IRIs
 | S10 | `mdcff`-Erweiterung: lokale Metadaten-Overrides (`data/local-metadata/<slug>/MD.cff`/`CITATION.cff`, Feld-Ebene-Merge, für `heritage_object`/`spatial`/`temporal` u. a., die `mdcff` nie selbst herleitet) | fdo-3d-packager | S5 | erledigt 2026-09-08 |
 | S11 | `--publish-only`-Flag: nach einem Lauf mit `build_fdo` alles außer `dist/<slug>_release/<slug>-fdo-bundle.zip` löschen | fdo-3d-packager | S9 | erledigt 2026-09-09 |
 | S12 | `bundle`-Erweiterung: `data/local-data/<slug>/` 1:1 nach `data/<...>` im Paket spiegeln (beliebige Zusatzdateien, z. B. SfM-Quellfotos) | fdo-3d-packager | S6 | erledigt 2026-09-09 |
+| S13 | Release `v1.0.0`: `CITATION.cff` (Version, Datum, DOI-Platzhalter), Git-Tag, GitHub-Release -> Zenodo-Archivierung (Software-DOI) | fdo-3d-packager | S0 | in Arbeit 2026-09-09 |
 
 S3 und S4 sind technisch unabhängig von S5 und können in beliebiger
 Reihenfolge bzw. parallel in Angriff genommen werden; S5 braucht die
@@ -2140,6 +2143,60 @@ Implementiert und gegen die CI-Fixture laufen lassen, nicht nur behauptet:
   `<slug>-fdo-bundle.zip` (Abnahme 4).
 - Das ist jetzt auch der neue CI-Schritt in `build.yml`
   ("Confirm the local-data fixture landed in the bundle (S12)").
+
+---
+
+## S13 — Release `v1.0.0`
+
+[#s13--release-v100](#s13--release-v100)
+
+**Ziel:** den Code-Stand, der CIIC 81 + Freshford erzeugt hat, zitierbar
+und über Zenodo als Software-DOI archiviert machen -- kein PyPI-Paket,
+kein neuer `main.py`-Schritt (A4-Entscheidung 2026-09-09): anders als
+`fdo-squirrel` hat dieses Repo keine Downstream-Konsumenten, die einen
+Pin brauchen, der einzige Zweck ist Zitierbarkeit + Archivierung.
+Vorbild: `fdo-squirrel`s eigenes S10 (Versionsbump + Tag), dort bereits
+real durchgeführt (`v1.0.0`, DOI `10.5281/zenodo.18404885`).
+
+**Substanz:**
+
+- `CITATION.cff`: `version: v0.1` -> `v1.0.0`, `date-released` auf
+  `2026-09-09`, der auskommentierte `# doi: ...`-Platzhalter durchs
+  `identifiers:`-Blockformat ersetzt (Muster: `fdo-squirrel`s eigene,
+  jetzt befüllte `CITATION.cff`), weiterhin auskommentiert -- die DOI
+  existiert erst nach dem GitHub-Release.
+- Kein Code-, kein `main.py`-, kein PRIMER-Teil-B-Schritt im Sinne der
+  `STEPS`-Tabelle -- reine Metadaten- und Git-Pflege, wie bei
+  `fdo-squirrel`s S10.
+
+**Was noch fehlt (Flos Teil, nicht hier im Sandkasten machbar):**
+
+1. Diesen Patch committen + pushen (siehe `## Commit` im PATCH-README).
+2. `git tag v1.0.0` auf genau diesem Commit, `git push --tags`.
+3. Auf zenodo.org/account/settings/github prüfen/aktivieren, dass die
+   GitHub-Zenodo-Integration für `FDOx-squirrel/fdo-3d-packager`
+   eingeschaltet ist (pro Repo einzeln, wie bei `fdo-squirrel` schon
+   gemacht) -- **muss an sein, bevor** der GitHub-Release veröffentlicht
+   wird, sonst greift der Webhook nicht rückwirkend.
+4. Auf GitHub einen Release aus dem `v1.0.0`-Tag veröffentlichen (ein
+   reiner Git-Tag allein löst Zenodos Webhook nicht aus, das braucht
+   einen echten "Release published"-Event).
+5. Die von Zenodo vergebene DOI zurückmelden -- dann `identifiers:` in
+   `CITATION.cff` einkommentieren und mit der echten DOI befüllen,
+   letzter kleiner Patch.
+
+**Abnahme:** `CITATION.cff` zeigt `v1.0.0` + korrektes Datum, Zenodo hat
+einen Deposit mit DOI erzeugt, `CITATION.cff` trägt die DOI danach nicht
+mehr auskommentiert.
+
+### Stand 2026-09-09
+
+[#stand-2026-09-09](#stand-2026-09-09)
+
+`CITATION.cff` vorbereitet und hier gegen einen frischen Klon verifiziert
+(reine YAML-Änderung, nichts Bindendes zu prüfen). Schritte 1-5 oben
+liegen bei Flo -- **nicht "erledigt"**, bewusst offen gelassen, bis die
+DOI real existiert.
 
 ---
 

@@ -21,6 +21,8 @@ keywords:
   - cultural heritage
   - photogrammetry
 license: MIT
-version: v0.1
-date-released: "2026-09-03"
-# doi: "10.5281/zenodo.XXXXXXX"  # TODO: add Zenodo DOI once minted
+version: v1.0.0
+date-released: "2026-09-09"
+# identifiers:
+#   - type: doi
+#     value: "10.5281/zenodo.XXXXXXX"  # TODO: fill in once Zenodo mints the DOI (after the GitHub Release is published)
