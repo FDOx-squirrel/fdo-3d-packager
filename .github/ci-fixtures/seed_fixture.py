@@ -31,6 +31,10 @@ this repo's own wiring rather than tripping over that upstream bug on
 every run; the bug itself is real and documented in PRIMER.md, not
 swept under the rug.
 
+Also seeds data/local-data/ci-smoke/ (S12) -- one file in a subfolder, so
+CI exercises the "mirror an arbitrary local-data subfolder into
+data/<...>" path, not just the no-local-data default.
+
 Run from the repository root: `python .github/ci-fixtures/seed_fixture.py`
 """
 from __future__ import annotations
@@ -42,6 +46,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 SLUG = "ci-smoke"
 RAW_DIR = REPO_ROOT / "data" / "raw" / SLUG
+LOCAL_DATA_DIR = REPO_ROOT / "data" / "local-data" / SLUG
 
 SOURCE_INFO = {
     "input_mode": "local",
@@ -67,8 +72,16 @@ def main() -> int:
     (RAW_DIR / "source_info.json").write_text(
         json.dumps(SOURCE_INFO, indent=2, sort_keys=False) + "\n", encoding="utf-8"
     )
+
+    (LOCAL_DATA_DIR / "sfm-session-1").mkdir(parents=True, exist_ok=True)
+    (LOCAL_DATA_DIR / "sfm-session-1" / "ci-smoke-source.jpg").write_bytes(
+        b"S12 fixture: stands in for an SfM source photo, content never inspected\n"
+    )
+
     print(f"seed_fixture.py: wrote {RAW_DIR.relative_to(REPO_ROOT)}/ "
           f"(source_info.json, model.glb, texture.jpg)")
+    print(f"seed_fixture.py: wrote {LOCAL_DATA_DIR.relative_to(REPO_ROOT)}/ "
+          f"(sfm-session-1/ci-smoke-source.jpg, S12 fixture)")
     return 0
 
 

@@ -213,6 +213,11 @@ Eigenschaften, an denen sich ein Lauf messen lässt:
 | Kaputte/unlesbare lokale Override-Datei (`MD.cff`/`CITATION.cff` unter `data/local-metadata/`)? | **Neue Entscheidung, nicht im ursprünglichen Vorschlagsdokument:** harter Abbruch (`load_local_override()` wirft `ValueError` mit Dateiname, `run()` fängt das und meldet klar welche Datei betroffen ist), **nicht** wie `sketchfab_meta.json` still als „nicht vorhanden" behandelt. Begründung: `sketchfab_meta.json` ist maschinengeschrieben, „lesen fehlgeschlagen → als unangereichert weiterlaufen" ist dort ein vernünftiger Default; ein lokaler Override ist dagegen von Hand geschriebene, bewusst kuratierte Eingabe — ein still ignorierter Parse-Fehler würde ein Paket erzeugen, das aussieht als sei der Override angewendet worden, tatsächlich aber weiterhin die generischen Werte trägt. Das ist schlimmer als ein klarer Abbruch | 2026-09-08 (S10) |
 | Erster echter Rundlauf gegen CIIC 81 + Freshford (kuratierter lokaler Override, --from fetch, Flos Maschine) | Beide Slugs erfolgreich, fdo-squirrel round-trip confirmed. Bestaetigt dabei: keine TODO: id not set-Platzhalter mehr, Creator/Datum kommen aus CITATION.cff, alle vier S8-Diagramme entstehen (resvg-py gezogen), und das classification_rules.yaml-Problem (.mtl/viewer/*/data/textures/* -> generische Rolle) ist jetzt zusaetzlich an echten Produktionsdaten belegt, nicht nur an der Fixture. CIIC 81s MD.cff-Override auf id (reservierte Zenodo-DOI 10.5281/zenodo.18724635) hat die eingebaute Wrong-Slug-Warnung ausgeloest -- von Flo bestaetigt: kein Bug, das Objekt war schon einmal publiziert. creators[].id fehlte bei beiden Slugs (kein --creator-profile) und hat den Lauf nicht blockiert -- die in S9 vermutete Crosswalk-Pflicht dafuer griff hier nicht, nicht weiter untersucht | 2026-09-09, Befund aus echtem Lauf |
 | --publish-only-Aufraeum-Modus (S11) | Nach einem Lauf, der build_fdo enthaelt: dist/<slug>/, dist/<slug>.zip und alles in dist/<slug>_release/ ausser <slug>-fdo-bundle.zip loeschen -- dieses Bundle ist bereits vollstaendig selbstenthaltend (fdo_finalize.build_finished_bundle() faltet Originalpaket + alle generierten Dateien hinein, gegengeprueft an fdo-squirrels main.py), nichts geht verloren. Opt-in, Default bleibt unveraendert -- Flos Entscheidung: dist/<slug>/dist/<slug>.zip sind genau das, worauf der --from/--skip-Wiederaufnahme-Vertrag angewiesen ist, ein automatisches Loeschen nach jedem Lauf wuerde den kaputt machen. Kein eigener Schritt in STEPS (kein Pipeline-Schritt, reines Post-Processing nach run_selection_once), sondern ein Flag, das nach einer erfolgreichen Selection greift, die build_fdo enthaelt -- sonst No-op mit Hinweis auf stderr | 2026-09-09 (S11) |
+| Lokale Zusatzdateien (S12): wo im Paket landen sie? | unter data/, Struktur gibt der Nutzer selbst vor -- Flos Entscheidung, data/local-data/<slug>/<beliebige Struktur> wird 1:1 nach data/<beliebige Struktur> im Bundle gespiegelt, kein fester Zielordner wie bei model/textures/images | 2026-09-09 (S12) |
+| Lokale Zusatzdateien (S12): Ordnerstruktur | beliebige Unterordner erlaubt, 1:1 gespiegelt (nicht nur flache Dateiliste) -- z. B. ein Unterordner pro SfM-Kamera-Session | 2026-09-09 (S12) |
+| Lokale Zusatzdateien (S12): Auto-Erkennung oder CLI-Flag? | Auto-Erkennung wie data/local-metadata/<slug>/ (S10) -- alles unter data/local-data/<slug>/ wird automatisch mitgenommen, kein neues CLI-Flag | 2026-09-09 (S12) |
+| Lokale Zusatzdateien (S12): Kollision mit model/textures/images | harter Abbruch, kein stilles Nebeneinander -- ein Unterordner unter data/local-data/<slug>/, dessen erstes Pfadsegment model/textures/images heisst, bricht bundle sofort ab. Gegen echte Fixture bestaetigt: klare Fehlermeldung, kein kaputtes ZIP | 2026-09-09 (S12), gegen CI-Fixture bestaetigt |
+| Lokale Zusatzdateien (S12): welche fdo:role bekommen sie? | keine eigene Klassifizierung, fdo-squirrels classification_rules.yaml entscheidet wie bei jeder anderen Datei auch -- an der Fixture (.jpg) real geprueft: landet auf "documentation", nicht auf dem generischen "data"-Fallback (anders als data/textures/*.jpeg, das an der textures/-Pfad-Regel scheitert, S7-Befund) -- die extensionsbasierte Regel greift hier offenbar korrekt | 2026-09-09 (S12), Befund |
 
 ### A5 Was in welchem Chat hochgeladen wird
 
@@ -250,6 +255,7 @@ Nicht anwendbar in S1 — dieses Repo veröffentlicht selbst keine RDF-IRIs
 | S9 | `--all-slugs`-Fix für `build_fdo` ohne `data/raw/`; CI (`--strict`-Smoke-Test gegen Fakes für Blender/nxsbuild/nxscompress, echter Rundlauf durch `fdo-squirrel`) | fdo-3d-packager | S7, S8 | erledigt 2026-09-07 |
 | S10 | `mdcff`-Erweiterung: lokale Metadaten-Overrides (`data/local-metadata/<slug>/MD.cff`/`CITATION.cff`, Feld-Ebene-Merge, für `heritage_object`/`spatial`/`temporal` u. a., die `mdcff` nie selbst herleitet) | fdo-3d-packager | S5 | erledigt 2026-09-08 |
 | S11 | `--publish-only`-Flag: nach einem Lauf mit `build_fdo` alles außer `dist/<slug>_release/<slug>-fdo-bundle.zip` löschen | fdo-3d-packager | S9 | erledigt 2026-09-09 |
+| S12 | `bundle`-Erweiterung: `data/local-data/<slug>/` 1:1 nach `data/<...>` im Paket spiegeln (beliebige Zusatzdateien, z. B. SfM-Quellfotos) | fdo-3d-packager | S6 | erledigt 2026-09-09 |
 
 S3 und S4 sind technisch unabhängig von S5 und können in beliebiger
 Reihenfolge bzw. parallel in Angriff genommen werden; S5 braucht die
@@ -2040,6 +2046,93 @@ Implementiert und gegen die vorhandene CI-Fixture-Infrastruktur
 - Zusätzlich am 2026-09-09 real gegen CIIC 81 + Freshford bestätigt (auf
   Flos Maschine, siehe A4): beide finished bundles enthalten tatsächlich
   alles, echte Sketchfab-/Blender-/Nexus-Daten inklusive.
+
+---
+
+## S12 — Lokale Zusatzdateien in `bundle`
+
+[#s12--lokale-zusatzdateien-in-bundle](#s12--lokale-zusatzdateien-in-bundle)
+
+**Ziel:** `bundle` (S6) übernimmt zusätzlich beliebige, von Hand
+bereitgestellte Dateien aus `data/local-data/<slug>/` 1:1 nach
+`data/<...>` im fertigen `dist/<slug>.zip` -- Flos Anstoß: nicht nur
+`MD.cff`/`CITATION.cff` (S10) sollen sich nachträglich ergänzen lassen,
+sondern auch echte Begleitdateien wie die SfM-Quellfotos eines
+Photogrammetrie-Scans, die `fetch`/`convert` naturgemäß nie sehen (die
+kommen nicht von Sketchfab oder aus dem Blender-Export).
+
+**Substanz:**
+
+- `py/fdo_3d_packager_utils.py`: neue Konstante `LOCAL_DATA` (`data/
+  local-data/`), analog `LOCAL_METADATA`. Kein neuer `.gitignore`-Eintrag
+  -- `data/*` deckt das schon ab (A5), wie bei `LOCAL_METADATA`.
+- `py/step_bundle.py`: neue Funktion `collect_local_data_entries(slug)`
+  -- läuft `data/local-data/<slug>/` rekursiv ab, spiegelt jede gefundene
+  Datei 1:1 als `data/<relativer Pfad>` ins Bundle, leere Liste wenn der
+  Ordner fehlt (komplett optional, wie der S10-Override). Die
+  Unterordnerstruktur wird nicht interpretiert, nur gespiegelt -- der
+  Nutzer entscheidet z. B. selbst, ob er nach Kamera-Session gliedert.
+- `RESERVED_DATA_SUBDIRS = {"model", "textures", "images"}`: taucht das
+  erste Pfadsegment einer lokalen Zusatzdatei dort auf, bricht `run()`
+  hart ab, **bevor** irgendetwas geschrieben wird -- kein stilles
+  Nebeneinander von generiertem und handkuratiertem Inhalt unter
+  demselben Namen (Muster: S10s harter Abbruch bei kaputter
+  Override-Datei, A4).
+- `run()`: `collect_local_data_entries()` nach dem bestehenden
+  `collect_bundle_entries()`-Aufruf, Kollisionsprüfung davor, Erfolgs-
+  meldung um `"N local-data file(s)"` erweitert (nur wenn N > 0 --
+  keine Regression in der Meldung für den Normalfall ohne lokale
+  Zusatzdateien).
+- `.github/ci-fixtures/seed_fixture.py`: seedet zusätzlich
+  `data/local-data/ci-smoke/sfm-session-1/ci-smoke-source.jpg`, damit CI
+  auch den "mit lokalen Zusatzdateien"-Pfad prüft, nicht nur den
+  Default ohne.
+- `.github/workflows/build.yml`: neuer Schritt direkt nach dem
+  `fdo-metadata.ttl`-Check -- bestätigt die Fixture-Datei sowohl im
+  `dist/<slug>.zip`-Listing als auch (unter ihrem gespiegelten Pfad) in
+  der erzeugten `fdo-metadata.ttl`.
+
+**Abnahme:**
+
+1. `data/local-data/<slug>/<beliebige Struktur>/<datei>` landet nach
+   `bundle` unter `data/<dieselbe Struktur>/<datei>` im ZIP, mehrere
+   Unterordner gleichzeitig.
+2. Ohne `data/local-data/<slug>/`: keine Regression, Meldung/Verhalten
+   identisch zu vor S12.
+3. Ein Unterordner namens `model`/`textures`/`images` unter
+   `data/local-data/<slug>/` bricht `bundle` mit klarer Fehlermeldung ab,
+   schreibt kein ZIP.
+4. Die Zusatzdatei übersteht den vollen Rundlauf durch `build_fdo` --
+   taucht in `fdo-metadata.ttl` unter ihrem gespiegelten Pfad auf und
+   damit auch im `--publish-only`-Endzustand (S11), weil sie Teil des
+   Original-Pakets ist, das `build_finished_bundle()` hineinkopiert.
+
+### Erledigt 2026-09-09
+
+[#erledigt-2026-09-09-s12](#erledigt-2026-09-09-s12)
+
+Implementiert und gegen die CI-Fixture laufen lassen, nicht nur behauptet:
+
+- Zwei Unterordner + eine Top-Level-Datei unter `data/local-data/
+  ci-smoke/` (`sfm-session-1/IMG_0001.jpg`, `sfm-session-1/IMG_0002.jpg`,
+  `sfm-session-2/IMG_0100.jpg`, `camera-log.txt`): alle vier landen
+  bytegleich unter ihrem gespiegelten `data/...`-Pfad im ZIP, Meldung
+  zeigt `4 local-data file(s)` (Abnahme 1).
+- Derselbe Lauf ohne `data/local-data/`: Meldung identisch zu vor S12,
+  kein `local-data`-Hinweis (Abnahme 2).
+- `data/local-data/ci-smoke/textures/oops.jpg` (reservierter Name):
+  `bundle` bricht sofort ab mit `... uses reserved data/ subfolder
+  name(s) (textures) -- pick a different subfolder ...`, kein ZIP
+  geschrieben (Abnahme 3).
+- Voller Rundlauf bis `build_fdo`: `data/sfm-session-1/
+  ci-smoke-source.jpg` erscheint in `fdo-metadata.ttl` mit
+  `fdo:role "documentation"` (nicht dem generischen `"data"`-Fallback --
+  die extensionsbasierte Klassifizierungsregel greift hier korrekt,
+  anders als bei `data/textures/*.jpeg`, S7-Befund). Nach `--publish-only`
+  (S11) steckt dieselbe Datei weiterhin im übriggebliebenen
+  `<slug>-fdo-bundle.zip` (Abnahme 4).
+- Das ist jetzt auch der neue CI-Schritt in `build.yml`
+  ("Confirm the local-data fixture landed in the bundle (S12)").
 
 ---
 

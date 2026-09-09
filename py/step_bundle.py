@@ -8,7 +8,9 @@ Target layout (from fdo-squirrel/example_fdo/, confirmed 2026-09-03):
     |-- data/
     |   |-- model/<file>     .obj/.mtl/.nxs/.nxz -> role "model"
     |   |-- textures/<file>  -> role "auxiliary" (classification_rules.yaml)
-    |   `-- images/<file>    preview.png -> role "documentation"
+    |   |-- images/<file>    preview.png -> role "documentation"
+    |   `-- <user structure> optional, data/local-data/<slug>/ mirrored
+    |                        1:1 (S12) -- SfM source photos and the like
     `-- viewer/<file>        3DHOP miniviewer (html/js/css), vendored under
                              assets/3dhop/ -- see that folder's NOTICE.md
                              for provenance/pin and what was trimmed.
@@ -48,13 +50,24 @@ from pathlib import Path
 # (`python py/step_*.py` -- repo root is not on sys.path by default).
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from py.fdo_3d_packager_utils import DIST, VIEWER_SRC, load_source_info, write_deterministic_zip
+from py.fdo_3d_packager_utils import DIST, LOCAL_DATA, VIEWER_SRC, load_source_info, write_deterministic_zip
 
 # dist/<slug>/ files this step requires to already exist (written by
 # convert/S3, nexus/S4 and mdcff/S5) -- the completeness gate below.
 # model.mtl and textures/ are deliberately absent from this list: both are
 # legitimately optional (see module docstring).
 REQUIRED_DIST_FILES = ("MD.cff", "CITATION.cff", "model.obj", "model.nxs", "model.nxz", "preview.png")
+
+# First path segment under data/ that this step's own generated layout
+# already owns (module docstring) -- data/local-data/<slug>/ (S12) mirrors
+# into data/<...> in the bundle, and a user subfolder named "model",
+# "textures" or "images" would either silently sit next to (never
+# actually overwrite, entries are additive, not merged by arcname) the
+# real ones or just be genuinely confusing about which is generated and
+# which is hand-supplied. Hard error, not a silent add -- same "a
+# collision that could hide what's really in the package is worse than a
+# clear abort" reasoning as S10's structural-field collisions.
+RESERVED_DATA_SUBDIRS = {"model", "textures", "images"}
 
 # Files under assets/3dhop/ that do NOT travel into the shipped ZIP.
 # NOTICE.md is this repo's own vendoring note for maintainers, not part of
@@ -73,6 +86,21 @@ def collect_viewer_files() -> list[tuple[str, Path]]:
         return []
     files = sorted(p for p in VIEWER_SRC.rglob("*") if p.is_file() and p.name not in VIEWER_EXCLUDE)
     return [(f"viewer/{p.relative_to(VIEWER_SRC).as_posix()}", p) for p in files]
+
+
+def collect_local_data_entries(slug: str) -> list[tuple[str, Path]]:
+    """Every file under data/local-data/<slug>/, as (data/<relative path>,
+    source path) pairs, sorted for determinism (filesystem iteration order
+    isn't guaranteed across platforms, PRIMER.md A3) -- entirely optional
+    (S12), empty list if the folder doesn't exist. The subfolder structure
+    under data/local-data/<slug>/ is mirrored 1:1 into data/<...> in the
+    bundle -- this step doesn't interpret it (e.g. group-by-camera-session
+    is a user choice, not something bundle needs to understand)."""
+    local_dir = LOCAL_DATA / slug
+    if not local_dir.exists():
+        return []
+    files = sorted(p for p in local_dir.rglob("*") if p.is_file())
+    return [(f"data/{p.relative_to(local_dir).as_posix()}", p) for p in files]
 
 
 def collect_bundle_entries(out_dir: Path) -> list[tuple[str, Path]]:
@@ -126,6 +154,22 @@ def run(args: argparse.Namespace) -> tuple[bool, str]:
     model_count = sum(1 for arcname, _ in entries if arcname.startswith("data/model/"))
     texture_count = sum(1 for arcname, _ in entries if arcname.startswith("data/textures/"))
 
+    local_data_entries = collect_local_data_entries(slug)
+    if local_data_entries:
+        reserved_hits = sorted({
+            arcname.split("/")[1]
+            for arcname, _ in local_data_entries
+            if arcname.split("/")[1] in RESERVED_DATA_SUBDIRS
+        })
+        if reserved_hits:
+            return False, (
+                f"{LOCAL_DATA / slug} uses reserved data/ subfolder name(s) "
+                f"({', '.join(reserved_hits)}) -- pick a different subfolder, "
+                "model/textures/images are this step's own generated layout"
+            )
+        entries.extend(local_data_entries)
+    local_data_count = len(local_data_entries)
+
     zip_path = DIST / f"{slug}.zip"
     # Idempotency: drop a stale ZIP from a previous run first, same
     # reasoning as step_nexus.py clearing its own two output files --
@@ -139,7 +183,9 @@ def run(args: argparse.Namespace) -> tuple[bool, str]:
     message = (
         f"bundled {slug} -> {zip_path.relative_to(DIST.parent)} "
         f"({model_count} model file(s), {texture_count} texture(s), "
-        f"{len(viewer_files)} viewer file(s), {size:,} bytes)"
+        f"{len(viewer_files)} viewer file(s)"
+        + (f", {local_data_count} local-data file(s)" if local_data_count else "")
+        + f", {size:,} bytes)"
     )
     return True, message
 

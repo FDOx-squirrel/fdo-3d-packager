@@ -33,6 +33,19 @@ DIST = REPO_ROOT / "dist"
 # entry for it either.
 LOCAL_METADATA = REPO_ROOT / "data" / "local-metadata"
 
+# Local, hand-supplied extra files (S12) -- e.g. SfM source photography, a
+# raw camera-session folder, anything `bundle` (S6) has no way to derive
+# and that should still travel inside the fdox package under `data/`.
+# Same "never a repo artefact, no separate .gitignore entry" reasoning as
+# LOCAL_METADATA above (data/* already covers it), but a different merge
+# shape: LOCAL_METADATA overrides fixed, known filenames (MD.cff,
+# CITATION.cff) field-by-field; this one mirrors whatever subfolder
+# structure the user creates under data/local-data/<slug>/ straight into
+# data/<...> in the bundle (S6/S12) -- the user decides that structure
+# (e.g. one subfolder per SfM camera session), this repo doesn't
+# interpret it, just copies it 1:1.
+LOCAL_DATA = REPO_ROOT / "data" / "local-data"
+
 # Vendored, offline third-party assets (PRIMER.md A3: network access stays
 # confined to `fetch`). Currently just the trimmed 3DHOP viewer the `bundle`
 # step (S6) copies into every dist/<slug>.zip -- see assets/3dhop/NOTICE.md
