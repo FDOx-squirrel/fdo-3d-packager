@@ -16,7 +16,7 @@ jsonschema
 # generator change would silently reshape every future fdo-metadata.ttl
 # this step produces (PRIMER.md A4, "Gepinnte Laufzeit"). Invoked as the
 # installed console script, not imported -- see step_build_fdo.py.
-fdo-squirrel @ git+https://github.com/FDOx-squirrel/fdo-squirrel.git@v1.0.0
+fdo-squirrel @ git+https://github.com/FDOx-squirrel/fdo-squirrel.git@v1.0.1
 
 # Not pip-installable, external requirements documented in README.md:
 #   - Blender (headless), for the convert step (S3)
