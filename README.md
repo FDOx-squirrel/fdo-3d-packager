@@ -399,6 +399,27 @@ here talks to Zenodo -- that upload, and copying the resulting DOI into
 `dist/_build/<slug>.zip` (i.e. `bundle` hasn't run) or a missing `fdo-squirrel`
 install both fail the step outright with a clear message.
 
+### Checking the RO-Crate in a finished bundle
+
+A bundle built here is an [RO-Crate 1.2](https://w3id.org/ro/crate/1.2). To
+check it with the community validator (Windows cmd; `govan-5` is an example
+slug), install it once, then unpack the bundle into an empty folder and
+validate that folder:
+
+```cmd
+pip install roc-validator
+```
+
+```cmd
+mkdir dist\crate && tar -xf dist\govan-5_release\govan-5-fdo-bundle.zip -C dist\crate && rocrate-validator validate dist\crate
+```
+
+The last line should read `RO-Crate is a valid ro-crate-1.2`. A warning that the
+FDOx profile IRI could not be verified is expected. The full guide, with
+Linux/macOS commands and troubleshooting, is
+[Validating the RO-Crate in a bundle](https://github.com/FDOx-squirrel/fdo-squirrel/blob/main/docs/validate-ro-crate.md)
+in `fdo-squirrel`. Remove `dist\crate` afterwards; it is a scratch copy.
+
 ### Upgrading from the old `dist/` layout
 
 Before v1.1.0 the intermediates sat directly under `dist/` (`dist/<slug>/` and

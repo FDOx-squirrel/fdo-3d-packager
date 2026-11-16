@@ -270,6 +270,7 @@ Nicht anwendbar in S1 — dieses Repo veröffentlicht selbst keine RDF-IRIs
 | S13 | Release `v1.0.0`: `CITATION.cff` (Version, Datum, DOI-Platzhalter), Git-Tag, GitHub-Release -> Zenodo-Archivierung (Software-DOI) | fdo-3d-packager | S0 | in Arbeit 2026-09-09 |
 | S14 | Pin auf `fdo-squirrel@v1.2.0` (RO-Crate 1.2 + Signposting im Bundle, neues Output-Layout), Doku | fdo-3d-packager | `fdo-squirrel` `v1.2.0` getaggt | **vorbereitet 2026-11-16** (erst anwenden, wenn der Tag existiert) |
 | S15 | `dist/` aufräumen: Zwischenstände nach `dist/_build/`, `dist/` gitignored, README (Migration), CI; Pin auf `fdo-squirrel` `v1.2.1`; Release `v1.1.0` | fdo-3d-packager | S14, `fdo-squirrel` `v1.2.1` getaggt | **vorbereitet 2026-11-16** (Tag + Release von Hand, Befehle in `PATCH-README.md`) |
+| S16 | README: Abschnitt „RO-Crate im fertigen Bundle prüfen" (`roc-validator`, Verweis auf die Anleitung in `fdo-squirrel`) | fdo-3d-packager | S15, `fdo-squirrel` S28 | **vorbereitet 2026-11-16** (reine Doku, kein Release nötig) |
 
 S3 und S4 sind technisch unabhängig von S5 und können in beliebiger
 Reihenfolge bzw. parallel in Angriff genommen werden; S5 braucht die
