@@ -16,7 +16,12 @@ jsonschema
 # generator change would silently reshape every future fdo-metadata.ttl
 # this step produces (PRIMER.md A4, "Gepinnte Laufzeit"). Invoked as the
 # installed console script, not imported -- see step_build_fdo.py.
-fdo-squirrel @ git+https://github.com/FDOx-squirrel/fdo-squirrel.git@v1.0.1
+#
+# v1.2.0: finished bundles carry ro-crate-metadata.json (RO-Crate 1.2) and a
+# FAIR Signposting landing page; the output folder holds the bundle plus
+# fdo-metadata.ttl, ro-crate-metadata.json, rdf_modelling_report.html and
+# fdo_overview.png, everything else in _work/ (S14, PRIMER.md).
+fdo-squirrel @ git+https://github.com/FDOx-squirrel/fdo-squirrel.git@v1.2.0
 
 # Not pip-installable, external requirements documented in README.md:
 #   - Blender (headless), for the convert step (S3)

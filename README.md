@@ -383,9 +383,14 @@ python main.py --only build_fdo
 
 It runs the ZIP through a real `fdo-squirrel` instance (`pip install -r
 requirements.txt` already installed it, see External requirements below)
-and writes the result to `dist/<slug>_release/` -- `fdo-metadata.ttl`, the
-HTML/JSON modelling reports, a Mermaid diagram, and `fdo-squirrel`'s own
-re-zipped "finished FDO bundle" ready to publish by hand. This directory is
+and writes the result to `dist/<slug>_release/`: `fdo-squirrel`'s own
+re-zipped "finished FDO bundle" ready to publish by hand, plus
+`fdo-metadata.ttl`, `ro-crate-metadata.json`, the HTML modelling report and
+`fdo_overview.png` next to it; every other generated file (JSON report,
+diagrams, landing page, `FDOx.yaml`) is in `dist/<slug>_release/_work/`. From
+`fdo-squirrel` v1.1.0 on the bundle is also an
+[RO-Crate 1.2](https://w3id.org/ro/crate/1.2): `ro-crate-metadata.json` sits at
+its root, next to a FAIR Signposting landing page. This directory is
 gitignored (`dist/*_release/`): it's a rebuildable byproduct of the
 already-committed `dist/<slug>.zip`, not a second citable version. Nothing
 here talks to Zenodo -- that upload, and copying the resulting DOI into
@@ -402,7 +407,7 @@ install both fail the step outright with a clear message.
 
 `fdo-squirrel` itself is **not** listed here despite the `build_fdo` step
 (S7) needing it -- unlike Blender/nxsbuild, it is a pip dependency
-(`requirements.txt`, pinned commit), installed by the same
+(`requirements.txt`, pinned tag), installed by the same
 `pip install -r requirements.txt` as everything else; `build_fdo` finds it
 as the console script `pip` puts next to this interpreter, see
 `py/step_build_fdo.py`.
