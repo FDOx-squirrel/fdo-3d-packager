@@ -8,7 +8,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
+import subprocess
+import sys
 import zipfile
 from pathlib import Path
 from typing import Any
@@ -227,6 +230,86 @@ def resolve_bundle_slug(explicit: str | None) -> str:
         f"multiple bundles found under dist/_build/ ({', '.join(slugs)}) -- pass --slug to pick one, "
         "or --all-slugs to run every one of them"
     )
+
+
+def discover_release_slugs() -> list[str]:
+    """Every slug a finished bundle exists for, i.e.
+    dist/<slug>_release/<slug>-fdo-bundle.zip -- `validate` (S18)'s input.
+    Independent of dist/_build/ on purpose: `--publish-only` (S11) deletes
+    that folder and keeps only this bundle, and the bundle is what gets
+    uploaded, so it is what should be checked. Sorted for determinism."""
+    if not DIST.exists():
+        return []
+    return sorted(
+        p.parent.name[: -len("_release")]
+        for p in DIST.glob("*_release/*-fdo-bundle.zip")
+        if p.name == f"{p.parent.name[: -len('_release')]}-fdo-bundle.zip"
+    )
+
+
+def resolve_release_slug(explicit: str | None) -> str:
+    """--slug resolution for `validate`, mirroring resolve_bundle_slug()
+    but against dist/<slug>_release/<slug>-fdo-bundle.zip."""
+    if explicit:
+        return explicit
+    slugs = discover_release_slugs()
+    if len(slugs) == 1:
+        return slugs[0]
+    if not slugs:
+        raise FileNotFoundError(
+            "no dist/<slug>_release/<slug>-fdo-bundle.zip found -- run `python main.py --only build_fdo ...` first"
+        )
+    raise ValueError(
+        f"multiple finished bundles found under dist/ ({', '.join(slugs)}) -- pass --slug to pick one, "
+        "or --all-slugs to run every one of them"
+    )
+
+
+# --------------------------------------------------------------------------
+# Child processes and the run log (PRIMER.md S19)
+#
+# Blender, nxsbuild and rocrate-validator write straight to the console, which
+# a Python-level copy of sys.stdout (py/run_log.py) cannot see. So every
+# child process goes through run_command(): without a run log it is exactly
+# the old `subprocess.run(cmd, check=True)` (console output untouched), with
+# one it is read line by line and printed through sys.stdout, so the log
+# holds the same text the console shows.
+# --------------------------------------------------------------------------
+
+_CAPTURE_CHILD_OUTPUT = False
+
+
+def set_capture_child_output(flag: bool) -> None:
+    """Switched on by py/run_log.py while a run log is being written."""
+    global _CAPTURE_CHILD_OUTPUT
+    _CAPTURE_CHILD_OUTPUT = flag
+
+
+def run_command(cmd: list[str], *, capture_env: dict[str, str] | None = None) -> None:
+    """subprocess.run(cmd, check=True) that also feeds the run log.
+
+    `capture_env` is merged into the child's environment only while a run
+    log is active (e.g. a fixed terminal width and UTF-8 for the validator's
+    boxed report, which would otherwise be 80 columns of cp1252 when piped);
+    without a log the child inherits the console and the environment as
+    before. Raises subprocess.CalledProcessError on a non-zero exit, like
+    check=True."""
+    if not _CAPTURE_CHILD_OUTPUT:
+        subprocess.run(cmd, check=True)
+        return
+    env = dict(os.environ)
+    env.update(capture_env or {})
+    proc = subprocess.Popen(
+        cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        text=True, encoding="utf-8", errors="replace", bufsize=1, env=env,
+    )
+    assert proc.stdout is not None
+    for line in proc.stdout:
+        sys.stdout.write(line)
+        sys.stdout.flush()
+    returncode = proc.wait()
+    if returncode:
+        raise subprocess.CalledProcessError(returncode, cmd)
 
 
 def publish_only_cleanup(slug: str) -> list[str]:

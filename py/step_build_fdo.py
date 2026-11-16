@@ -78,7 +78,6 @@ from __future__ import annotations
 
 import argparse
 import shutil
-import subprocess
 import sys
 import sysconfig
 from pathlib import Path
@@ -89,7 +88,9 @@ from typing import Optional
 # (`python py/step_*.py` -- repo root is not on sys.path by default).
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from py.fdo_3d_packager_utils import DIST, bundle_zip, release_dir as release_dir_for, resolve_bundle_slug
+from py.fdo_3d_packager_utils import (
+    DIST, bundle_zip, release_dir as release_dir_for, resolve_bundle_slug, run_command,
+)
 
 
 def _fdo_squirrel_executable() -> Optional[Path]:
@@ -158,8 +159,15 @@ def run(args: argparse.Namespace) -> tuple[bool, str]:
     # silently swallowed (PRIMER.md A3, same guard as the nxsbuild/
     # nxscompress/Blender subprocess calls in step_nexus.py/step_convert.py).
     # Output streams straight through, same as those two -- not captured,
-    # for the same reason: this repo's own convention, not registry's.
-    subprocess.run([str(exe), "--package", str(zip_path), "--outdir", str(release_dir)], check=True)
+    # for the same reason: this repo's own convention, not registry's. With
+    # `--log` (S19) run_command() reads it line by line instead so it reaches
+    # the log; fdo-squirrel prints non-ASCII marks (check mark, info, warning),
+    # which a Windows pipe would otherwise encode with the ANSI code page and
+    # fail on -- hence the UTF-8 settings, applied only while a log is written.
+    run_command(
+        [str(exe), "--package", str(zip_path), "--outdir", str(release_dir)],
+        capture_env={"PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"},
+    )
 
     ttl_path = release_dir / "fdo-metadata.ttl"
     if not ttl_path.exists():

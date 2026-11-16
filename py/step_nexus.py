@@ -38,7 +38,6 @@ from __future__ import annotations
 import argparse
 import os
 import shutil
-import subprocess
 import sys
 from pathlib import Path
 
@@ -47,7 +46,7 @@ from pathlib import Path
 # (`python py/step_*.py` -- repo root is not on sys.path by default).
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from py.fdo_3d_packager_utils import build_dir, load_source_info
+from py.fdo_3d_packager_utils import build_dir, load_source_info, run_command
 
 
 def _find_binary(explicit: str | None, env_var: str, default_name: str) -> str | None:
@@ -106,11 +105,11 @@ def run(args: argparse.Namespace) -> tuple[bool, str]:
     # check=True: a failed nxsbuild/nxscompress run must stop the pipeline,
     # not be silently swallowed (PRIMER.md A3: copied subprocess calls keep
     # their check=True guards). main.py's own exception handling reports it.
-    subprocess.run(nxsbuild_cmd, check=True)
+    run_command(nxsbuild_cmd)
     if not nxs_path.exists():
         return False, f"nxsbuild ran but did not produce {nxs_path}"
 
-    subprocess.run([nxscompress_bin, str(nxs_path), "-o", str(nxz_path)], check=True)
+    run_command([nxscompress_bin, str(nxs_path), "-o", str(nxz_path)])
     if not nxz_path.exists():
         return False, f"nxscompress ran but did not produce {nxz_path}"
 

@@ -69,6 +69,18 @@ or `cff-version` (CITATION.cff) is applied but flagged as a Warning
 (`--strict`: hard fail) -- these are almost always a wrong-slug-folder
 accident, not a curated correction, but not implausible enough to refuse
 outright.
+
+Coordinates (PRIMER.md S20, decided 2026-11-16): fdo-squirrel reads a point
+from two different places -- the RDF geometry (`dcat`/GeoSPARQL) only from
+`spatial.wkt`, the RO-Crate and the Mermaid overview only from
+`spatial.lat`/`spatial.lon`. A local override that names just one of the two
+forms therefore produced a package with the coordinates missing in half of
+its outputs, without any error. After the override merge,
+`normalise_spatial()` completes the other form from the one that is there:
+`lat`+`lon` -> `wkt` as `POINT(lon lat)`, a `POINT(...)` `wkt` -> `lat`/`lon`.
+A coordinate pair that disagrees with the `wkt`, one that is out of range,
+or a lone `lat`/`lon` is a Warning (`--strict`: hard fail). A non-point
+`wkt` (polygon, line) is left alone -- there is no single point to derive.
 """
 from __future__ import annotations
 
@@ -323,6 +335,67 @@ def merge_local_override(
     return merged, overridden, collisions
 
 
+_NUMBER = r"[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?"
+_WKT_POINT_RE = re.compile(rf"^\s*POINT\s*\(\s*({_NUMBER})\s+({_NUMBER})\s*\)\s*$", re.IGNORECASE)
+
+
+def _is_number(value: object) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def normalise_spatial(spatial: dict) -> tuple[dict, list[str], list[str]]:
+    """Complete `spatial` so that `wkt` and `lat`/`lon` are both present
+    whenever the location is a single point (PRIMER.md S20, see this
+    module's docstring for why).
+
+    Returns (spatial, notes, warnings). `notes` say what was derived (shown
+    in run()'s message), `warnings` are the things a human should look at:
+    lat/lon that contradict the wkt, values outside WGS84 range, a lone
+    lat or lon. The input is not modified. Anything that is not a dict, or
+    that has nothing to derive from, comes back unchanged."""
+    if not isinstance(spatial, dict):
+        return spatial, [], []
+    out = dict(spatial)
+    notes: list[str] = []
+    warnings: list[str] = []
+
+    lat, lon, wkt = out.get("lat"), out.get("lon"), out.get("wkt")
+    have_lat, have_lon = _is_number(lat), _is_number(lon)
+    point = _WKT_POINT_RE.match(wkt) if isinstance(wkt, str) else None
+
+    if point:
+        # WKT is longitude first. Fill what is missing, flag what disagrees.
+        added = []
+        for key, given, from_wkt in (
+            ("lat", lat, float(point.group(2))),
+            ("lon", lon, float(point.group(1))),
+        ):
+            if not _is_number(given):
+                out[key] = from_wkt
+                added.append(key)
+            elif abs(given - from_wkt) > 1e-9:
+                warnings.append(
+                    f"spatial.{key} {given} disagrees with spatial.wkt ({wkt}) -- WKT is longitude first"
+                )
+        if added:
+            notes.append(f"spatial.{'/'.join(added)} derived from wkt")
+    elif have_lat and have_lon and not wkt:
+        out["wkt"] = f"POINT({lon} {lat})"
+        notes.append("spatial.wkt derived from lat/lon")
+    elif have_lat != have_lon:
+        warnings.append(
+            f"spatial has only {'lat' if have_lat else 'lon'} and no point wkt -- "
+            "lat and lon are needed together"
+        )
+
+    lat, lon = out.get("lat"), out.get("lon")
+    if _is_number(lat) and not -90 <= lat <= 90:
+        warnings.append(f"spatial.lat {lat} is outside -90..90")
+    if _is_number(lon) and not -180 <= lon <= 180:
+        warnings.append(f"spatial.lon {lon} is outside -180..180")
+    return out, notes, warnings
+
+
 def build_description(info: dict) -> str:
     description = (info.get("description") or "").strip()
     if description:
@@ -474,6 +547,10 @@ def run(args: argparse.Namespace) -> tuple[bool, str]:
 
     md_cff = build_md_cff(info, enrichment, publisher_label, publisher_id)
     md_cff, md_overridden, md_collisions = merge_local_override(md_cff, md_override, MD_CFF_STRUCTURAL_KEYS)
+    spatial_notes: list[str] = []
+    spatial_warnings: list[str] = []
+    if isinstance(md_cff.get("spatial"), dict):
+        md_cff["spatial"], spatial_notes, spatial_warnings = normalise_spatial(md_cff["spatial"])
 
     # Validated *after* the merge (S10 decision): an override that produces
     # an invalid MD.cff fails the same hard way a generator bug would --
@@ -502,7 +579,11 @@ def run(args: argparse.Namespace) -> tuple[bool, str]:
     if citation_overridden:
         message += f" (CITATION.cff local override: {', '.join(citation_overridden)})"
 
+    if spatial_notes:
+        message += f" ({'; '.join(spatial_notes)})"
+
     warn_reasons = []
+    warn_reasons.extend(spatial_warnings)
     if info["todo_placeholders"]:
         warn_reasons.append(
             "source_info.json has unresolved TODO placeholder(s): "

@@ -154,7 +154,9 @@ Eigenschaften, an denen sich ein Lauf messen lässt:
   `RELEASE`-Konstante in `py/fdo_3d_packager_utils.py`.
 - Zweimal laufen lassen, `git status` muss beim zweiten Mal leer sein.
 - Netzwerkzugriff bleibt auf den `fetch`-Schritt beschränkt (Sketchfab-API);
-  alles andere läuft offline gegen `data/raw/`.
+  alles andere läuft offline gegen `data/raw/`. Einzige Ausnahme seit S18:
+  `validate` (RO-Crate-Prüfung, lädt den JSON-LD-Kontext nach) -- wie `fetch`
+  `network=True`, also nie Teil des Standardlaufs und nie in der CI.
 - Kopierter Code (Blender-/Nexus-Subprocess-Aufrufe) behält seine
   `check=True`-Guards.
 - PRIMER.md Deutsch, alles andere (Code, Kommentare, README) Englisch.
@@ -271,6 +273,10 @@ Nicht anwendbar in S1 — dieses Repo veröffentlicht selbst keine RDF-IRIs
 | S14 | Pin auf `fdo-squirrel@v1.2.0` (RO-Crate 1.2 + Signposting im Bundle, neues Output-Layout), Doku | fdo-3d-packager | `fdo-squirrel` `v1.2.0` getaggt | **vorbereitet 2026-11-16** (erst anwenden, wenn der Tag existiert) |
 | S15 | `dist/` aufräumen: Zwischenstände nach `dist/_build/`, `dist/` gitignored, README (Migration), CI; Pin auf `fdo-squirrel` `v1.2.1`; Release `v1.1.0` | fdo-3d-packager | S14, `fdo-squirrel` `v1.2.1` getaggt | **vorbereitet 2026-11-16** (Tag + Release von Hand, Befehle in `PATCH-README.md`) |
 | S16 | README: Abschnitt „RO-Crate im fertigen Bundle prüfen" (`roc-validator`, Verweis auf die Anleitung in `fdo-squirrel`) | fdo-3d-packager | S15, `fdo-squirrel` S28 | **vorbereitet 2026-11-16** (reine Doku, kein Release nötig) |
+| S17 | `convert --rotate X,Y,Z`: Modell beim Konvertieren um die Weltachsen drehen (Euler XYZ, Pivot = Mittelpunkt der Bounding-Box), damit `model.obj`, Nexus-Dateien und `preview.png` dieselbe Ausrichtung haben | fdo-3d-packager | S3 | **vorbereitet 2026-11-16** (Blender-Lauf bei Flo offen) |
+| S18 | Schritt `validate`: `rocrate-validator` auf das fertige Bundle (`dist/<slug>_release/<slug>-fdo-bundle.zip`), `--rocrate-validator-bin`; `network=True` | fdo-3d-packager | S7, S16 | **vorbereitet 2026-11-16** (echter Validator-Lauf bei Flo erfolgreich, 63/0/3) |
+| S19 | `--log DATEI`: gesamte Terminalausgabe eines Laufs (inkl. Blender, nxsbuild, Validator) zusätzlich in eine `.md`/`.txt`-Datei; Unterprozesse laufen über `run_command()` | fdo-3d-packager | S18 | **vorbereitet 2026-11-16** (Windows-Lauf bei Flo offen) |
+| S20 | `mdcff`: `spatial` vervollständigen -- `lat`+`lon` -> `wkt`, `POINT(...)` -> `lat`/`lon`; Warnungen bei Widerspruch, Wertebereich, einzelnem `lat`/`lon` | fdo-3d-packager | S10 | **vorbereitet 2026-11-16** |
 
 S3 und S4 sind technisch unabhängig von S5 und können in beliebiger
 Reihenfolge bzw. parallel in Angriff genommen werden; S5 braucht die
@@ -2259,6 +2265,107 @@ weg und `dist/<slug>_release/` enthält nur das Bundle.
 Im Sandkasten gegen die Fixture (gefälschtes Blender/Nexus) und das lokale
 `fdo-squirrel` verifiziert. Der Lauf mit echtem Blender/Nexus, die Migration
 von Flos Altbestand und Tag/Release sind Flos Teil.
+
+---
+
+## S17 — `convert --rotate`
+
+**Anlass:** Beim ersten echten Lauf für Gowran (`gowran-ogham-stone`,
+2026-11-16) stand der Stein in `preview.png` auf dem Kopf. Die Ausrichtung
+kommt aus dem Scan; die Pipeline hatte keine Möglichkeit, sie zu korrigieren.
+
+**Substanz:** `--rotate X,Y,Z` (Grad um die Weltachsen, Euler XYZ, Pivot = Mitte
+der Bounding-Box aller Meshes). `main.py` prüft die Eingabe (`_rotation()`),
+`step_convert.py` reicht sie nur an Blender weiter, wenn mindestens ein Wert
+ungleich 0 ist, `blender_convert_headless.py` dreht die Objekte ohne Elternobjekt
+nach dem Import und vor dem OBJ-Export (`rotate_model()`). Ohne Flag bleibt
+alles byte-gleich wie vorher. Negative Werte brauchen die `=`-Form
+(`--rotate=-90,0,0`, argparse).
+
+**Abnahme:** `--rotate=180,0,-90` (Gowran: 180° um die waagerechte Achse zur Preview-Kamera) lässt `preview.png` den Stein aufrecht zeigen -- `180,0,0` drehte ihn zugleich auf die Rückseite;
+`model.obj`, `model.nxz` und der Viewer folgen, weil sie aus derselben
+gedrehten Szene entstehen.
+
+### Vorbereitet 2026-11-16
+
+Im Sandkasten verifiziert: Weitergabe der Option an Blender (Ersatz-Blender
+protokolliert die Argumente: ohne Flag und bei `0,0,0` kein `--rotate`, sonst
+`--rotate x,y,z`), Eingabeprüfung, und die Pivot-Mathematik von `rotate_model()`
+gegen `mathutils` mit einem `bpy`-Platzhalter (Mittelpunkt und Radius bleiben,
+oben und unten tauschen). Nicht verifiziert, weil dort kein Blender läuft: der
+echte Lauf mit dem glTF-Import, die Reihenfolge Import -> Drehung -> OBJ-Export
+und das Aussehen der Preview. Das hat Flo am 2026-11-16 mit Blender 5.2.1 bestätigt (`180,0,-90`).
+
+
+## S18 — `validate`
+
+**Anlass:** Die RO-Crate-Prüfung war ein dreiteiliger Handgriff (S16: Bundle
+entpacken, `rocrate-validator` starten, Ordner löschen) und stand deshalb
+nicht im selben Terminalprotokoll wie der Bau.
+
+**Substanz:** Neuer letzter Schritt `validate` (`py/step_validate.py`). Er
+entpackt `dist/<slug>_release/<slug>-fdo-bundle.zip` in ein Temp-Verzeichnis,
+ruft `rocrate-validator validate` darauf auf und löscht das Verzeichnis, wenn
+der Validator zustimmt (bei Fehler bleibt es stehen, der Pfad steht in der
+Meldung). Gelesen wird das Bundle, nicht `dist/_build/`, damit `--publish-only`
+(S11) den Schritt nicht aushebelt. `network=True`: der Validator holt den
+JSON-LD-Kontext, offline endet er mit `URLError` und Exit-Code 2 (das ist ein
+Fehlschlag, kein Urteil über das Crate). Fehlt `rocrate-validator`, ist das eine
+Warnung (`--strict`: Fehler), kein Abbruch am Ende eines langen Laufs. Die
+Warnung zum nicht prüfbaren FDOx-Profil ist erwartet. `--from convert` enthält
+`validate` jetzt automatisch; ohne ihn `--skip validate`.
+
+**Abnahme:** `RO-Crate is a valid ro-crate-1.2` am Ende des Laufs; im echten Lauf
+für Gowran (2026-11-16, `roc-validator` 0.13.1): 66 Checks, 63 bestanden, 0
+fehlgeschlagen, 3 übersprungen.
+
+## S19 — `--log`
+
+**Anlass:** Die Terminalausgabe eines Laufs (Schritte, Blender, Nexus,
+Validator) ist der Nachweis, dass ein FDOx so gebaut wurde -- sie soll neben dem
+Bundle aufbewahrt werden können.
+
+**Substanz:** `--log DATEI` schreibt alles, was der Lauf ausgibt, zusätzlich in
+die Datei (`py/run_log.py`): `.md` mit Kopf (Zeitpunkt, Kommandozeile, Arbeits-
+verzeichnis, Python/Plattform) und Textblock, jede andere Endung als reiner
+Text; am Ende der Exit-Code. Ein `--token`-Wert wird als `***` geschrieben.
+Blender, nxsbuild, fdo-squirrel (`build_fdo`) und der Validator schreiben direkt auf die Konsole, die ein
+Python-seitiges Mitschreiben nicht sieht -- darum laufen alle Unterprozesse über
+`run_command()` in `fdo_3d_packager_utils.py`: ohne Log exakt das frühere
+`subprocess.run(check=True)`, mit Log zeilenweises Einlesen und Weiterreichen
+über `sys.stdout`. Nebenwirkung nur mit Log: Fortschrittsanzeigen mit `\r` werden
+zu einzelnen Zeilen.
+
+**Abnahme:** Die Logdatei enthält dieselben Zeilen wie die Konsole, einschließlich
+der Ausgabe der Unterprozesse und des Validator-Berichts.
+
+## S20 — `spatial`: Koordinaten vervollständigen
+
+**Anlass:** `fdo-squirrel` liest einen Punkt aus zwei Stellen: die RDF-Geometrie
+nur aus `spatial.wkt`, RO-Crate und Mermaid-Übersicht nur aus `spatial.lat`/
+`spatial.lon`. Ein Override mit nur einer Form ließ die Koordinaten in der
+Hälfte der Ausgaben stillschweigend fehlen (Gowran, 2026-11-16).
+
+**Substanz:** Nach dem Override-Merge ergänzt `normalise_spatial()` in
+`step_mdcff.py` die fehlende Form: `lat`+`lon` -> `wkt` als `POINT(lon lat)`,
+`POINT(...)`-`wkt` -> `lat`/`lon`. Widerspruch zwischen beiden, Werte außerhalb
+des WGS84-Bereichs und ein einzelnes `lat`/`lon` ohne Punkt-`wkt` sind eine
+Warnung (`--strict`: Fehler); ein `wkt` ohne Punkt (Polygon, Linie) bleibt
+unangetastet. Die Meldung des Schritts nennt, was abgeleitet wurde. Bleibt
+offen und gehört nach `fdo-squirrel`: Personen-IRIs im RDF kommen nur aus
+`CITATION.cff`-`authors`, nicht aus `MD.cff`-`creators[].id`.
+
+**Abnahme:** Ein Override mit nur `lat`/`lon` liefert `geosparql:asWKT` im RDF
+und `latitude`/`longitude` im RO-Crate.
+
+### Vorbereitet 2026-11-16
+
+Im Sandkasten verifiziert: `--strict`-CI-Lauf unverändert grün, Gowran-Fixture
+mit `lat`/`lon`-Override (RDF und RO-Crate haben den Punkt), 10 Fälle für
+`normalise_spatial()`, Log (`.md` und `.txt`, Token geschwärzt, Exit-Code),
+`validate` mit Ersatz-Validator (Erfolg, Exit 2, fehlendes Programm als Warnung
+und mit `--strict` als Fehler). Nicht verifiziert: `--log` unter Windows (echte
+Konsole, Blender/nxsbuild-Ausgabe), weil dort kein Blender und kein Windows läuft.
 
 ---
 

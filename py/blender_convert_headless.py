@@ -120,6 +120,35 @@ def relink_images(model_dir: Path) -> None:
     print(f"[relink_images] relinked {relinked}/{len(bpy.data.images)} image datablock(s)")
 
 
+def parse_rotation(text: str) -> tuple[float, float, float]:
+    """"180,0,0" -> (180.0, 0.0, 0.0): degrees about the world X, Y, Z axes."""
+    parts = [p.strip() for p in str(text).split(",")]
+    if len(parts) != 3:
+        raise ValueError(f"--rotate expects X,Y,Z in degrees, got {text!r}")
+    return float(parts[0]), float(parts[1]), float(parts[2])
+
+
+def rotate_model(rx: float, ry: float, rz: float) -> None:
+    """Re-orient the imported model (S17): Euler XYZ in degrees about the
+    world axes, pivoting on the centre of the mesh bounding box so the model
+    stays where it is. Only parentless objects get the matrix -- children
+    follow their parent. Runs after import and before the OBJ export, so
+    model.obj, the Nexus files and preview.png all share one orientation."""
+    center, _ = mesh_bounds()
+    rotation = mathutils.Euler(
+        (math.radians(rx), math.radians(ry), math.radians(rz)), "XYZ"
+    ).to_matrix().to_4x4()
+    pivot = (
+        mathutils.Matrix.Translation(center)
+        @ rotation
+        @ mathutils.Matrix.Translation(-center)
+    )
+    for obj in bpy.data.objects:
+        if obj.parent is None:
+            obj.matrix_world = pivot @ obj.matrix_world
+    bpy.context.view_layer.update()
+
+
 def mesh_bounds() -> tuple[mathutils.Vector, float]:
     meshes = [o for o in bpy.data.objects if o.type == "MESH"]
     if not meshes:
@@ -207,6 +236,10 @@ def main() -> None:
     clear_scene()
     import_model(in_path)
     relink_images(Path(in_path).resolve().parent)
+
+    rotate = args.get("rotate")
+    if rotate and rotate is not True:
+        rotate_model(*parse_rotation(rotate))
 
     # OBJ export: path_mode="STRIP" only asks Blender to declare which
     # texture *name* belongs to which material -- not to copy any bytes.

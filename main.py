@@ -23,6 +23,13 @@
         intermediate for that slug except dist/<slug>_release/
         <slug>-fdo-bundle.zip -- the one self-contained deliverable.
 
+    python main.py --from convert --slug <slug> ... --log dist/<slug>-run-log.md
+        the whole terminal output of the run (Blender, nxsbuild, fdo-squirrel,
+        the RO-Crate validator) is also written to that file (.md or .txt).
+    python main.py --only validate --slug <slug>
+        run the RO-Crate validator on dist/<slug>_release/<slug>-fdo-bundle.zip
+        (needs `pip install roc-validator` and internet).
+
 See PRIMER.md for what each step does and why. Steps are implemented one
 module per step under py/, each independently runnable
 (`python py/step_fetch.py ...`) -- this file is a convenience, not the only
@@ -40,6 +47,7 @@ from typing import Callable, Optional
 
 from py.fdo_3d_packager_utils import (
     discover_bundle_slugs,
+    discover_release_slugs,
     discover_slugs,
     publish_only_cleanup,
     resolve_bundle_slug,
@@ -75,10 +83,24 @@ STEPS: list[Step] = [
          description="Assemble dist/_build/<slug>.zip in fdo-squirrel's expected layout."),
     Step("build_fdo", "step_build_fdo", depends_on=("bundle",),
          description="Run dist/_build/<slug>.zip through fdo-squirrel; fdo-metadata.ttl as proof."),
+    Step("validate", "step_validate", depends_on=("build_fdo",), network=True,
+         description="rocrate-validator on dist/<slug>_release/<slug>-fdo-bundle.zip (needs roc-validator + internet)."),
 ]
 
 STEP_IDS = [s.id for s in STEPS]
 STEP_BY_ID = {s.id: s for s in STEPS}
+
+
+def _rotation(text: str) -> tuple[float, float, float]:
+    """argparse type for --rotate: "180,0,0" -> (180.0, 0.0, 0.0)."""
+    parts = text.split(",")
+    try:
+        values = tuple(float(p) for p in parts)
+    except ValueError:
+        values = ()
+    if len(values) != 3:
+        raise argparse.ArgumentTypeError(f"expected X,Y,Z in degrees (e.g. 180,0,0), got {text!r}")
+    return values
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -89,6 +111,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     ap.add_argument("--skip", metavar="STEP", help="Run everything but this step.")
     ap.add_argument("--dry-run", action="store_true", help="Print the plan, run nothing.")
     ap.add_argument("--strict", action="store_true", help="Warnings become errors (this is what CI runs).")
+    ap.add_argument("--log", metavar="FILE",
+                     help="Also write the whole terminal output of this run (including Blender, nxsbuild, "
+                          "fdo-squirrel and the RO-Crate validator) to FILE: .md gets a header and a fenced "
+                          "block, any other extension plain text (S19). A --token value is not written.")
+    ap.add_argument("--rocrate-validator-bin", default=os.environ.get("ROCRATE_VALIDATOR_BIN"),
+                     help="rocrate-validator executable (validate step; default: env ROCRATE_VALIDATOR_BIN, then $PATH).")
     ap.add_argument("--publish-only", action="store_true",
                      help="After a run that includes build_fdo succeeds, delete dist/_build/<slug>/, "
                           "dist/_build/<slug>.zip and everything in dist/<slug>_release/ except "
@@ -133,6 +161,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
     # the same reason as --sketchfab/--local above.
     ap.add_argument("--blender-bin", default=os.environ.get("BLENDER_BIN", "blender"),
                      help="Blender executable, headless-capable (convert step; default: env BLENDER_BIN or 'blender').")
+
+    # Re-orientation for the convert step (S17). A scan can arrive in any
+    # orientation (observed: Gowran came out upside down in preview.png);
+    # rotating during convert keeps model.obj, the Nexus files and
+    # preview.png consistent.
+    ap.add_argument("--rotate", type=_rotation, default=None, metavar="X,Y,Z",
+                     help="Convert step: rotate the model by X,Y,Z degrees about the world axes (Euler XYZ, "
+                          "pivot = bounding-box centre), e.g. --rotate 180,0,0. Negative values need the "
+                          "'=' form: --rotate=-90,0,0.")
 
     # nxsbuild/nxscompress binaries for the nexus step (S4). Same pattern
     # as --blender-bin above.
@@ -201,8 +238,10 @@ def _discover_slugs_for(selection: list[str]) -> list[str]:
     in STEPS, and `--skip` takes a single step, so no other combination
     isolates it) -- every other selection includes at least one
     data/raw/-based step, for which `discover_slugs()` remains correct."""
-    if selection == ["build_fdo"]:
-        return discover_bundle_slugs()
+    if selection and set(selection) <= {"build_fdo", "validate"}:
+        # validate (S18) reads the finished bundle in dist/<slug>_release/,
+        # build_fdo reads dist/_build/<slug>.zip -- neither needs data/raw/.
+        return discover_bundle_slugs() if "build_fdo" in selection else discover_release_slugs()
     return discover_slugs()
 
 
@@ -366,6 +405,17 @@ def _run_fetch_then_rest(selection: list[str], args: argparse.Namespace) -> int:
 
 def main() -> int:
     args = build_arg_parser().parse_args()
+    if not args.log:
+        return _run(args)
+    # Imported only now: without --log nothing about the console changes (S19).
+    from py.run_log import RunLog
+
+    with RunLog(args.log, sys.argv) as log:
+        log.exit_code = _run(args)
+        return log.exit_code
+
+
+def _run(args: argparse.Namespace) -> int:
     args.fetched_slugs = None  # set by step_fetch.py's run() on success
 
     if args.list:
@@ -396,7 +446,9 @@ def main() -> int:
     if args.all_slugs:
         slugs = _discover_slugs_for(selection)
         if not slugs:
-            if selection == ["build_fdo"]:
+            if selection == ["validate"]:
+                print("--all-slugs: no dist/<slug>_release/<slug>-fdo-bundle.zip found -- run build_fdo first", file=sys.stderr)
+            elif set(selection) <= {"build_fdo", "validate"}:
                 print("--all-slugs: no dist/_build/<slug>.zip found -- run bundle first", file=sys.stderr)
             else:
                 print("--all-slugs: no data/raw/<slug>/source_info.json found -- run fetch first", file=sys.stderr)

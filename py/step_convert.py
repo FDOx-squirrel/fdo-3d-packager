@@ -29,7 +29,6 @@ from __future__ import annotations
 import argparse
 import os
 import shutil
-import subprocess
 import sys
 from pathlib import Path
 
@@ -38,7 +37,7 @@ from pathlib import Path
 # (`python py/step_*.py` -- repo root is not on sys.path by default).
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from py.fdo_3d_packager_utils import DATA_RAW, DIST, MTL_TEXTURE_KEYS, build_dir, load_source_info
+from py.fdo_3d_packager_utils import DATA_RAW, DIST, MTL_TEXTURE_KEYS, build_dir, load_source_info, run_command
 
 
 def _copy_textures_from_raw(model_dir_raw: Path, out_dir: Path, mtl_path: Path) -> tuple[list[str], list[str]]:
@@ -120,10 +119,13 @@ def run(args: argparse.Namespace) -> tuple[bool, str]:
         "--obj-out", str(obj_path),
         "--preview-out", str(preview_path),
     ]
+    rotation = getattr(args, "rotate", None)  # (x, y, z) degrees or None, see main.py --rotate (S17)
+    if rotation and any(rotation):
+        cmd += ["--rotate", ",".join(f"{v:g}" for v in rotation)]
     # check=True: a failed Blender run must stop the pipeline, not be
     # silently swallowed (PRIMER.md A3: copied subprocess calls keep their
     # check=True guards). main.py's own exception handling reports it.
-    subprocess.run(cmd, check=True)
+    run_command(cmd)
 
     if not obj_path.exists():
         return False, f"Blender ran but did not produce {obj_path}"
@@ -136,7 +138,8 @@ def run(args: argparse.Namespace) -> tuple[bool, str]:
         texture_names, missing_textures = _copy_textures_from_raw(model_in.parent, out_dir, mtl_path)
 
     texture_note = f", {len(texture_names)} texture(s) -> textures/" if texture_names else ""
-    message = f"converted {slug} -> {obj_path.relative_to(DIST.parent)}{texture_note}, {preview_path.name}"
+    rotate_note = f", rotated {','.join(f'{v:g}' for v in rotation)} deg (XYZ)" if rotation and any(rotation) else ""
+    message = f"converted {slug} -> {obj_path.relative_to(DIST.parent)}{texture_note}, {preview_path.name}{rotate_note}"
     if missing_textures:
         message = "Warning: " + message + f" -- {len(missing_textures)} texture(s) referenced in model.mtl not found under {model_in.parent}: {', '.join(missing_textures)}"
     return True, message
@@ -146,6 +149,8 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--blender-bin", default=os.environ.get("BLENDER_BIN", "blender"))
     ap.add_argument("--slug", help="Which fetched model (data/raw/<slug>/) to convert. Auto-detected if exactly one exists.")
+    ap.add_argument("--rotate", type=lambda t: tuple(float(v) for v in t.split(",")), default=None, metavar="X,Y,Z",
+                    help="Re-orient the model: degrees about world X,Y,Z (Euler XYZ), e.g. --rotate=180,0,0.")
     ok, message = run(ap.parse_args())
     print(f"[convert] {message}")
     raise SystemExit(0 if ok else 1)
