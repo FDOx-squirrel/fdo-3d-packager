@@ -1,15 +1,15 @@
-"""build_fdo -- run dist/<slug>.zip through a local fdo-squirrel instance;
+"""build_fdo -- run dist/_build/<slug>.zip through a local fdo-squirrel instance;
 fdo-metadata.ttl is the proof the package is actually usable.
 
 Mirrors fdo-squirrel-registry's own S8 ("Registry als FDO, Release und CI"):
 "Der Bundle plus Index plus Shapes werden als ZIP durch fdo-squirrel
 geschickt [...] der Rundlauf ist zugleich der beste Integrationstest." Same
 principle here -- instead of reimplementing RDF generation, this step feeds
-`bundle`'s (S6) freshly-built dist/<slug>.zip through fdo-squirrel's own
+`bundle`'s (S6) freshly-built dist/_build/<slug>.zip through fdo-squirrel's own
 ingest and takes the resulting fdo-metadata.ttl as proof, not just a
 schema-valid MD.cff. Unlike the registry, this repo's bundle ZIP is already
 in fdo-squirrel's expected layout end to end -- no separate staging ZIP
-needed here, dist/<slug>.zip goes in as-is.
+needed here, dist/_build/<slug>.zip goes in as-is.
 
 **How fdo-squirrel is wired in (PRIMER.md Teil D, resolved 2026-09-07):**
 pip dependency (requirements.txt, pinned commit -- same reasoning as the
@@ -21,7 +21,7 @@ $PATH nor `-m main` work here (this repo's own orchestrator is also
 `main.py`, same collision registry hit).
 
 Offline in the PRIMER.md A3 sense that matters here: no network call of its
-own (fdo-squirrel reads the local dist/<slug>.zip, does not re-fetch
+own (fdo-squirrel reads the local dist/_build/<slug>.zip, does not re-fetch
 anything) -- unlike `fetch`, this step's `network=False` in main.py's STEPS
 table is correct even though it shells out to another program.
 
@@ -54,8 +54,8 @@ alongside the PNG/SVG ones (nothing to change on this repo's side for
 either, both were entirely fdo-squirrel's own behaviour). See PRIMER.md
 Teil A4 for the pin-bump entry and Teil D for the now-closed items.
 
-Completeness gate: dist/<slug>.zip must already exist (`bundle`, S6, must
-have run). `--slug` picks which one -- resolved against dist/<slug>.zip
+Completeness gate: dist/_build/<slug>.zip must already exist (`bundle`, S6, must
+have run). `--slug` picks which one -- resolved against dist/_build/<slug>.zip
 itself (`fdo_3d_packager_utils.py:resolve_bundle_slug()`), deliberately
 *not* the data/raw/<slug>/-based `resolve_slug()` that S3-S6 use: this
 step's real first run (see below) found dist/govan-2.zip and
@@ -69,7 +69,7 @@ fdo-metadata.ttl, ro-crate-metadata.json, the HTML modelling report and
 fdo_overview.png; since v1.2.0 every other generated file sits in
 dist/<slug>_release/_work/) -- gitignored, same reasoning as
 fdo-squirrel-registry's dist/release/: a rebuildable byproduct of an
-already-committed source (dist/<slug>.zip itself), not a second citable
+already-committed source (dist/_build/<slug>.zip itself), not a second citable
 fassung. Zenodo publishing stays a manual step for a human with
 credentials, same as `fetch`'s network exclusion (PRIMER.md A3) and
 registry's own S8.
@@ -89,7 +89,7 @@ from typing import Optional
 # (`python py/step_*.py` -- repo root is not on sys.path by default).
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from py.fdo_3d_packager_utils import DIST, resolve_bundle_slug
+from py.fdo_3d_packager_utils import DIST, bundle_zip, release_dir as release_dir_for, resolve_bundle_slug
 
 
 def _fdo_squirrel_executable() -> Optional[Path]:
@@ -133,7 +133,7 @@ def _fdo_squirrel_executable() -> Optional[Path]:
 
 def run(args: argparse.Namespace) -> tuple[bool, str]:
     slug = resolve_bundle_slug(getattr(args, "slug", None))
-    zip_path = DIST / f"{slug}.zip"
+    zip_path = bundle_zip(slug)
     if not zip_path.exists():
         return False, f"{zip_path} not found -- run `python main.py --only bundle` first"
 
@@ -144,7 +144,7 @@ def run(args: argparse.Namespace) -> tuple[bool, str]:
             "pip install -r requirements.txt"
         )
 
-    release_dir = DIST / f"{slug}_release"
+    release_dir = release_dir_for(slug)
     # Idempotency: drop a stale release dir from a previous run first, same
     # reasoning as step_bundle.py's stale-ZIP unlink and step_nexus.py's
     # stale-output unlink -- fdo-squirrel writes several files directly into
@@ -177,7 +177,7 @@ def run(args: argparse.Namespace) -> tuple[bool, str]:
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--slug", help="Which model (dist/<slug>.zip) to run through fdo-squirrel. Auto-detected if exactly one exists.")
+    ap.add_argument("--slug", help="Which model (dist/_build/<slug>.zip) to run through fdo-squirrel. Auto-detected if exactly one exists.")
     ok, message = run(ap.parse_args())
     print(f"[build_fdo] {message}")
     raise SystemExit(0 if ok else 1)

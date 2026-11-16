@@ -66,15 +66,15 @@ STEPS: list[Step] = [
     Step("fetch", "step_fetch", network=True,
          description="Resolve --sketchfab/--local into data/raw/."),
     Step("convert", "step_convert", depends_on=("fetch",),
-         description="Blender: data/raw model -> dist/<slug>/model.obj + preview.png."),
+         description="Blender: data/raw model -> dist/_build/<slug>/model.obj + preview.png."),
     Step("nexus", "step_nexus", depends_on=("convert",),
-         description="nxsbuild/nxscompress: dist/model.obj -> model.nxs/.nxz."),
+         description="nxsbuild/nxscompress: dist/_build/<slug>/model.obj -> model.nxs/.nxz."),
     Step("mdcff", "step_mdcff", depends_on=("fetch", "nexus"),
          description="Write MD.cff + CITATION.cff, validate against MD.cff-schema.yaml."),
     Step("bundle", "step_bundle", depends_on=("convert", "nexus", "mdcff"),
-         description="Assemble dist/<slug>.zip in fdo-squirrel's expected layout."),
+         description="Assemble dist/_build/<slug>.zip in fdo-squirrel's expected layout."),
     Step("build_fdo", "step_build_fdo", depends_on=("bundle",),
-         description="Run dist/<slug>.zip through fdo-squirrel; fdo-metadata.ttl as proof."),
+         description="Run dist/_build/<slug>.zip through fdo-squirrel; fdo-metadata.ttl as proof."),
 ]
 
 STEP_IDS = [s.id for s in STEPS]
@@ -90,8 +90,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     ap.add_argument("--dry-run", action="store_true", help="Print the plan, run nothing.")
     ap.add_argument("--strict", action="store_true", help="Warnings become errors (this is what CI runs).")
     ap.add_argument("--publish-only", action="store_true",
-                     help="After a run that includes build_fdo succeeds, delete dist/<slug>/, "
-                          "dist/<slug>.zip and everything in dist/<slug>_release/ except "
+                     help="After a run that includes build_fdo succeeds, delete dist/_build/<slug>/, "
+                          "dist/_build/<slug>.zip and everything in dist/<slug>_release/ except "
                           "<slug>-fdo-bundle.zip (S11) -- that bundle is already self-contained, "
                           "nothing is lost. Opt-in; the default keeps every intermediate, which "
                           "--from/--skip reruns depend on. No-op (with a note) if build_fdo isn't "
@@ -193,7 +193,7 @@ def _discover_slugs_for(selection: list[str]) -> list[str]:
     slug via data/raw/<slug>/source_info.json (resolve_slug(), see
     fdo_3d_packager_utils.py), so `discover_slugs()` (data/raw/-based) is
     the right source for any selection touching one of those -- but
-    `build_fdo` (S7) resolves against dist/<slug>.zip instead
+    `build_fdo` (S7) resolves against dist/_build/<slug>.zip instead
     (resolve_bundle_slug(), deliberately data/raw/-independent, see its own
     docstring), so a `--only build_fdo --all-slugs` run has no business
     requiring data/raw/ to exist at all. `selection` only ever equals
@@ -255,7 +255,7 @@ def run_selection_once(selection: list[str], args: argparse.Namespace) -> tuple[
     if getattr(args, "publish_only", False):
         if "build_fdo" in selection:
             # Resolved *before* publish_only_cleanup runs -- it deletes
-            # dist/<slug>.zip, which is what this resolution reads.
+            # dist/_build/<slug>.zip, which is what this resolution reads.
             slug = resolve_bundle_slug(getattr(args, "slug", None))
             removed = publish_only_cleanup(slug)
             if removed:
@@ -397,7 +397,7 @@ def main() -> int:
         slugs = _discover_slugs_for(selection)
         if not slugs:
             if selection == ["build_fdo"]:
-                print("--all-slugs: no dist/<slug>.zip found -- run bundle first", file=sys.stderr)
+                print("--all-slugs: no dist/_build/<slug>.zip found -- run bundle first", file=sys.stderr)
             else:
                 print("--all-slugs: no data/raw/<slug>/source_info.json found -- run fetch first", file=sys.stderr)
             return 1

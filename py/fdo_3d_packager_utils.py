@@ -22,6 +22,25 @@ RELEASE = "0.1.0"
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DATA_RAW = REPO_ROOT / "data" / "raw"
 DIST = REPO_ROOT / "dist"
+# Intermediates (dist/_build/<slug>/ from convert/nexus/mdcff, and the bundle
+# dist/_build/<slug>.zip) live apart from the finished result, so dist/ shows
+# one dist/<slug>_release/ per model and nothing else (PRIMER.md S15).
+BUILD = DIST / "_build"
+
+
+def build_dir(slug: str) -> Path:
+    """convert/nexus/mdcff output for one model: dist/_build/<slug>/."""
+    return BUILD / slug
+
+
+def bundle_zip(slug: str) -> Path:
+    """The bundle step's output and build_fdo's input: dist/_build/<slug>.zip."""
+    return BUILD / f"{slug}.zip"
+
+
+def release_dir(slug: str) -> Path:
+    """build_fdo's output: dist/<slug>_release/."""
+    return DIST / f"{slug}_release"
 
 # Curated MD.cff/CITATION.cff field overrides (PRIMER.md S10) -- Flo's own
 # research (Wikidata object type, OSM spatial id, ChronOntology period,
@@ -48,7 +67,7 @@ LOCAL_DATA = REPO_ROOT / "data" / "local-data"
 
 # Vendored, offline third-party assets (PRIMER.md A3: network access stays
 # confined to `fetch`). Currently just the trimmed 3DHOP viewer the `bundle`
-# step (S6) copies into every dist/<slug>.zip -- see assets/3dhop/NOTICE.md
+# step (S6) copies into every dist/_build/<slug>.zip -- see assets/3dhop/NOTICE.md
 # for what was vendored, from where, and why.
 ASSETS = REPO_ROOT / "assets"
 VIEWER_SRC = ASSETS / "3dhop"
@@ -60,7 +79,7 @@ VIEWER_SRC = ASSETS / "3dhop"
 
 def ensure_dirs() -> None:
     DATA_RAW.mkdir(parents=True, exist_ok=True)
-    DIST.mkdir(parents=True, exist_ok=True)
+    BUILD.mkdir(parents=True, exist_ok=True)
 
 
 def write_json(data: Any, path: Path) -> None:
@@ -168,7 +187,7 @@ def load_source_info(slug: str | None = None) -> dict:
 
 
 def discover_bundle_slugs() -> list[str]:
-    """Every slug a bundle currently exists for, i.e. dist/<slug>.zip --
+    """Every slug a bundle currently exists for, i.e. dist/_build/<slug>.zip --
     build_fdo (S7)'s own input. Deliberately independent of
     discover_slugs()/data/raw/ above: found the hard way (S7, real run
     against this repo's own committed dist/govan-2.zip and
@@ -178,14 +197,14 @@ def discover_bundle_slugs() -> list[str]:
     real fixtures this step is meant to run against. The bundle ZIP is
     self-contained; S7 has no reason to require data/raw/ to still exist.
     Sorted for determinism, same reasoning as discover_slugs()."""
-    if not DIST.exists():
+    if not BUILD.exists():
         return []
-    return sorted(p.stem for p in DIST.glob("*.zip"))
+    return sorted(p.stem for p in BUILD.glob("*.zip"))
 
 
 def resolve_bundle_slug(explicit: str | None) -> str:
     """--slug resolution for build_fdo (S7), mirroring resolve_slug() above
-    but against dist/<slug>.zip (discover_bundle_slugs()) instead of
+    but against dist/_build/<slug>.zip (discover_bundle_slugs()) instead of
     data/raw/<slug>/ -- see that function's docstring for why the two
     cannot share one implementation."""
     if explicit:
@@ -194,11 +213,18 @@ def resolve_bundle_slug(explicit: str | None) -> str:
     if len(slugs) == 1:
         return slugs[0]
     if not slugs:
+        legacy = sorted(DIST.glob("*.zip")) if DIST.exists() else []
+        hint = (
+            f" (found {len(legacy)} bundle(s) in the old layout directly under dist/ -- "
+            "move them and their dist/<slug>/ folders into dist/_build/, see README)"
+            if legacy else ""
+        )
         raise FileNotFoundError(
-            "no dist/<slug>.zip found -- run `python main.py --only bundle ...` first"
+            "no dist/_build/<slug>.zip found -- run `python main.py --only bundle ...` first"
+            + hint
         )
     raise ValueError(
-        f"multiple bundles found under dist/ ({', '.join(slugs)}) -- pass --slug to pick one, "
+        f"multiple bundles found under dist/_build/ ({', '.join(slugs)}) -- pass --slug to pick one, "
         "or --all-slugs to run every one of them"
     )
 
@@ -211,8 +237,8 @@ def publish_only_cleanup(slug: str) -> list[str]:
 
     Safe to do: that bundle is already self-contained (original package +
     every generated file -- fdo-squirrel's fdo_finalize.build_finished_
-    bundle()) and therefore holds a copy of everything dist/<slug>/,
-    dist/<slug>.zip and the rest of dist/<slug>_release/ (diagrams, TTL
+    bundle()) and therefore holds a copy of everything dist/_build/<slug>/,
+    dist/_build/<slug>.zip and the rest of dist/<slug>_release/ (diagrams, TTL
     snippets, the HTML/JSON reports) still have -- confirmed by reading
     fdo-squirrel's own main.py: `generated_files` there is exactly the
     same list fdo-3d-packager writes into <slug>_release/, plus
@@ -221,8 +247,8 @@ def publish_only_cleanup(slug: str) -> list[str]:
 
     Opt-in and only after a full run (see main.py's hook: this is called
     only when `build_fdo` was part of the selection that just succeeded)
-    -- default runs keep every intermediate, because dist/<slug>/ and
-    dist/<slug>.zip are exactly what the --from/--skip resumability
+    -- default runs keep every intermediate, because dist/_build/<slug>/ and
+    dist/_build/<slug>.zip are exactly what the --from/--skip resumability
     contract (PRIMER.md A3) depends on existing between invocations. This
     is for a genuine "done, ship it" run, not the default.
 
@@ -233,19 +259,23 @@ def publish_only_cleanup(slug: str) -> list[str]:
     """
     removed: list[str] = []
 
-    raw_dir = DIST / slug
+    raw_dir = build_dir(slug)
     if raw_dir.exists():
         shutil.rmtree(raw_dir)
         removed.append(str(raw_dir.relative_to(REPO_ROOT)))
 
-    zip_path = DIST / f"{slug}.zip"
+    zip_path = bundle_zip(slug)
     if zip_path.exists():
         zip_path.unlink()
         removed.append(str(zip_path.relative_to(REPO_ROOT)))
 
-    release_dir = DIST / f"{slug}_release"
-    if release_dir.exists():
-        for p in release_dir.iterdir():
+    # Leave no empty dist/_build/ behind once the last model is cleaned up.
+    if BUILD.exists() and not any(BUILD.iterdir()):
+        BUILD.rmdir()
+
+    rel_dir = release_dir(slug)
+    if rel_dir.exists():
+        for p in rel_dir.iterdir():
             if p.name.endswith("-fdo-bundle.zip"):
                 continue  # the one file --publish-only exists to keep
             if p.is_dir():

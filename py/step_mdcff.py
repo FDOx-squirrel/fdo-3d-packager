@@ -86,7 +86,7 @@ import yaml
 from jsonschema import Draft202012Validator
 
 from py.fdo_3d_packager_utils import (
-    DATA_RAW, DIST, LOCAL_METADATA, REPO_ROOT, load_source_info, read_json, write_yaml,
+    DATA_RAW, LOCAL_METADATA, REPO_ROOT, build_dir, load_source_info, read_json, write_yaml,
 )
 
 SCHEMA_PATH = REPO_ROOT / "schemas" / "md_cff" / "MD.cff-schema.yaml"
@@ -438,7 +438,7 @@ def validate_md_cff(md_cff: dict) -> list[str]:
 def run(args: argparse.Namespace) -> tuple[bool, str]:
     info = load_source_info(getattr(args, "slug", None))
     slug = info["slug"]
-    out_dir = DIST / slug
+    out_dir = build_dir(slug)
 
     # Completeness gate: nexus (S4) must have run, even though its
     # checksums don't end up in MD.cff (module docstring) -- a package

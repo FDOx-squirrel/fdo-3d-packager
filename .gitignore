@@ -24,19 +24,22 @@ Thumbs.db
 config.local.json
 
 # --- Note ---
-# data/ and dist/ are part of the reproducible pipeline output and are NOT
-# ignored -- dist/ holds this repository's versioned, citable products
-# (see primer-repo skill). data/raw/ can hold large local scans or Sketchfab
-# downloads though; keep an eye on repo size before committing those.
+# data/raw/ can hold large local scans or Sketchfab downloads; keep an eye
+# on repo size before committing those.
 
-# --- build_fdo's (S7) release output ---
-# fdo-metadata.ttl, the HTML modelling report, the Mermaid source and
-# fdo-squirrel's own re-zipped "finished FDO bundle": rebuilt by every
-# `build_fdo` run from dist/<slug>.zip, which is already committed -- not a
-# second citable fassung, same reasoning as fdo-squirrel-registry's own
-# dist/release/ (PRIMER.md S8 pattern).
-dist/*_release/
+# --- dist/ (PRIMER.md S15) ---
+# Everything the pipeline builds: dist/_build/<slug>/ and dist/_build/<slug>.zip
+# (intermediates) and dist/<slug>_release/ (build_fdo's finished bundle,
+# fdo-metadata.ttl, ro-crate-metadata.json, ...). All of it is rebuildable from
+# data/raw/, and a bundle is tens of MB per model -- not repository content.
+# Publish the finished bundle through Zenodo, not through git.
+dist/
 data/*
 PATCH-README.md
 cache*
 dist/ci-smoke*
+
+# --- Local working files, not part of the repository ---
+/govan_enrich.py
+/pipeline_run.md
+/test/

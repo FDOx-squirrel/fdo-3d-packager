@@ -1,9 +1,9 @@
-"""nexus -- nxsbuild/nxscompress: dist/<slug>/model.obj -> model.nxs -> model.nxz.
+"""nexus -- nxsbuild/nxscompress: dist/_build/<slug>/model.obj -> model.nxs -> model.nxz.
 
 Offline, runs against whatever `convert` (S3) already put in
-dist/<slug>/: model.obj + model.mtl + textures/ (see step_convert.py).
+dist/_build/<slug>/: model.obj + model.mtl + textures/ (see step_convert.py).
 Reads data/raw/source_info.json for `slug` (the same S2 handoff contract
-S3 reads, see step_fetch.py:build_source_info) to find dist/<slug>/.
+S3 reads, see step_fetch.py:build_source_info) to find dist/_build/<slug>/.
 
 nxsbuild reads model.obj directly (its mtllib line already points at
 textures/<file> relative to model.obj -- see step_convert.py's
@@ -47,7 +47,7 @@ from pathlib import Path
 # (`python py/step_*.py` -- repo root is not on sys.path by default).
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from py.fdo_3d_packager_utils import DIST, load_source_info
+from py.fdo_3d_packager_utils import build_dir, load_source_info
 
 
 def _find_binary(explicit: str | None, env_var: str, default_name: str) -> str | None:
@@ -64,7 +64,7 @@ def _find_binary(explicit: str | None, env_var: str, default_name: str) -> str |
 def run(args: argparse.Namespace) -> tuple[bool, str]:
     info = load_source_info(getattr(args, "slug", None))
     slug = info["slug"]
-    out_dir = DIST / slug
+    out_dir = build_dir(slug)
     obj_path = out_dir / "model.obj"
     if not obj_path.exists():
         return False, f"{obj_path} not found -- run `python main.py --only convert` first"
@@ -90,7 +90,7 @@ def run(args: argparse.Namespace) -> tuple[bool, str]:
     nxs_path = out_dir / "model.nxs"
     nxz_path = out_dir / "model.nxz"
     # Idempotency: drop stale outputs from a previous run first, same
-    # reasoning as step_convert.py clearing dist/<slug>/ -- but here only
+    # reasoning as step_convert.py clearing dist/_build/<slug>/ -- but here only
     # the two files this step owns, not the whole folder (model.obj,
     # textures/, preview.png belong to S3 and must survive).
     for stale in (nxs_path, nxz_path):

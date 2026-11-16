@@ -62,7 +62,7 @@ jobs:
 
       - name: Confirm the local-data fixture landed in the bundle (S12)
         run: |
-          unzip -l dist/ci-smoke.zip | grep -q "data/sfm-session-1/ci-smoke-source.jpg"
+          unzip -l dist/_build/ci-smoke.zip | grep -q "data/sfm-session-1/ci-smoke-source.jpg"
           grep -q "data/sfm-session-1/ci-smoke-source.jpg" dist/ci-smoke_release/fdo-metadata.ttl
 
       - name: Re-run build_fdo with --publish-only (S11) and confirm cleanup
@@ -70,7 +70,8 @@ jobs:
 
       - name: Confirm only the finished bundle survived
         run: |
-          test ! -e dist/ci-smoke
-          test ! -e dist/ci-smoke.zip
+          test ! -e dist/_build/ci-smoke
+          test ! -e dist/_build/ci-smoke.zip
+          test ! -e dist/_build
           test -s dist/ci-smoke_release/ci-smoke-fdo-bundle.zip
           [ "$(find dist/ci-smoke_release -mindepth 1 | wc -l)" -eq 1 ]

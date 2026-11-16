@@ -1,4 +1,4 @@
-"""convert -- Blender (headless): data/raw model -> dist/<slug>/model.obj
+"""convert -- Blender (headless): data/raw model -> dist/_build/<slug>/model.obj
 (+textures/) + preview.png.
 
 Offline, runs against whatever `fetch` (S2) already put in data/raw/. Reads
@@ -14,7 +14,7 @@ a real run (every texture reported "missing", nothing copied -- see
 blender_convert_headless.py's docstring). This step now copies the
 textures itself: it reads the filenames model.mtl references and copies
 them from data/raw/<slug>/ (which step_fetch.py/S2 already guarantees is
-complete) into dist/<slug>/textures/, rewriting the .mtl to match --
+complete) into dist/_build/<slug>/textures/, rewriting the .mtl to match --
 independent of whatever Blender's own path resolution did or didn't do.
 textures/ as its own folder is still intentional either way (PRIMER.md A4:
 classification_rules.yaml's `auxiliary` role, kept out of `documentation`).
@@ -38,7 +38,7 @@ from pathlib import Path
 # (`python py/step_*.py` -- repo root is not on sys.path by default).
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from py.fdo_3d_packager_utils import DATA_RAW, DIST, MTL_TEXTURE_KEYS, load_source_info
+from py.fdo_3d_packager_utils import DATA_RAW, DIST, MTL_TEXTURE_KEYS, build_dir, load_source_info
 
 
 def _copy_textures_from_raw(model_dir_raw: Path, out_dir: Path, mtl_path: Path) -> tuple[list[str], list[str]]:
@@ -104,7 +104,7 @@ def run(args: argparse.Namespace) -> tuple[bool, str]:
         )
 
     slug = info["slug"]
-    out_dir = DIST / slug
+    out_dir = build_dir(slug)
     if out_dir.exists():
         shutil.rmtree(out_dir)  # clean slate: no stale textures from a previous convert
     out_dir.mkdir(parents=True)

@@ -1,4 +1,4 @@
-"""bundle -- assemble dist/<slug>.zip in fdo-squirrel's expected layout.
+"""bundle -- assemble dist/_build/<slug>.zip in fdo-squirrel's expected layout.
 
 Target layout (from fdo-squirrel/example_fdo/, confirmed 2026-09-03):
 
@@ -22,13 +22,13 @@ classification_rules.yaml now has path-prefix rules for `.html`/`.js`/
 step_build_fdo.py's docstring for the before/after. Nothing to change
 here; this step never pre-populated `distributions[]` itself (A4).
 
-Offline (PRIMER.md A3): reads dist/<slug>/ (written by convert/nexus/mdcff,
+Offline (PRIMER.md A3): reads dist/_build/<slug>/ (written by convert/nexus/mdcff,
 S3-S5) and assets/3dhop/ (vendored, not live-fetched), no network. Runs
 after convert, nexus and mdcff, and gates on all three having produced
 their files -- a bundle assembled before the artefacts it packages exist
 would silently ship a stale or incomplete ZIP.
 
-Two of the four dist/<slug>/ inputs are optional and handled gracefully,
+Two of the four dist/_build/<slug>/ inputs are optional and handled gracefully,
 not required: textures/ (an untextured model is legitimate, not an
 error -- see PRIMER.md S6) and model.mtl (Blender/S3 always writes one
 today, but nothing here depends on that continuing to be true).
@@ -49,9 +49,11 @@ from pathlib import Path
 # (`python py/step_*.py` -- repo root is not on sys.path by default).
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from py.fdo_3d_packager_utils import DIST, LOCAL_DATA, VIEWER_SRC, load_source_info, write_deterministic_zip
+from py.fdo_3d_packager_utils import (
+    DIST, LOCAL_DATA, VIEWER_SRC, build_dir, bundle_zip, load_source_info, write_deterministic_zip,
+)
 
-# dist/<slug>/ files this step requires to already exist (written by
+# dist/_build/<slug>/ files this step requires to already exist (written by
 # convert/S3, nexus/S4 and mdcff/S5) -- the completeness gate below.
 # model.mtl and textures/ are deliberately absent from this list: both are
 # legitimately optional (see module docstring).
@@ -132,7 +134,7 @@ def collect_bundle_entries(out_dir: Path) -> list[tuple[str, Path]]:
 def run(args: argparse.Namespace) -> tuple[bool, str]:
     info = load_source_info(getattr(args, "slug", None))
     slug = info["slug"]
-    out_dir = DIST / slug
+    out_dir = build_dir(slug)
 
     missing = [name for name in REQUIRED_DIST_FILES if not (out_dir / name).exists()]
     if missing:
@@ -169,7 +171,7 @@ def run(args: argparse.Namespace) -> tuple[bool, str]:
         entries.extend(local_data_entries)
     local_data_count = len(local_data_entries)
 
-    zip_path = DIST / f"{slug}.zip"
+    zip_path = bundle_zip(slug)
     # Idempotency: drop a stale ZIP from a previous run first, same
     # reasoning as step_nexus.py clearing its own two output files --
     # write_deterministic_zip() always writes every entry fresh anyway, but
@@ -191,7 +193,7 @@ def run(args: argparse.Namespace) -> tuple[bool, str]:
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--slug", help="Which model (dist/<slug>/) to bundle. Auto-detected if exactly one exists.")
+    ap.add_argument("--slug", help="Which model (dist/_build/<slug>/) to bundle. Auto-detected if exactly one exists.")
     ok, message = run(ap.parse_args())
     print(f"[bundle] {message}")
     raise SystemExit(0 if ok else 1)
