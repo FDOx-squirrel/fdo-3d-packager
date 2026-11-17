@@ -224,7 +224,8 @@ Eigenschaften, an denen sich ein Lauf messen lässt:
 | fdo-squirrel-Pin gebumpt auf e538366 (S18-S20-Fixes) | Alle drei aus diesem Repo gemeldeten fdo-squirrel-Punkte gefixt und real gegen die CI-Fixture bestaetigt: classification_rules.yaml (data/model/model.mtl -> model, data/textures/*.jpeg -> auxiliary, viewer/* -> auxiliary, jetzt per path_prefix-Regeln, die vor den Extension-Regeln greifen), creators[].id jetzt tatsaechlich optional (resolve_id_label(), ersetzt das alte require_id_label()), kein JPG mehr neben PNG/SVG bei fdo_overview.*/fdo_ttl_snippet_*.*. Paketversion bleibt 0.3.1 (kein pyproject.toml-Bump) -- FDOx.yamls generator.version zeigt weiterhin nur die Paketversion, keinen Commit-Hash (bekannte Luecke, siehe oben). Wichtiger Nebenbefund beim Pin-Bumpen selbst: pip install -r requirements.txt zieht einen neuen Commit bei gleicher Paketversion nicht zuverlaessig nach, wenn fdo-squirrel in der Umgebung schon installiert ist -- pip install --upgrade --force-reinstall --no-deps mit der vollen git-URL noetig, sonst laeuft man unbemerkt gegen den alten Commit weiter | 2026-09-09 (S18-S20 upstream) |
 | fdo-squirrel-Pin gebumpt auf 3868e1e (S21-Fixes) | Beide aus dem Handoff-MD gemeldeten Diagramm-Punkte gefixt und real gegen die CI-Fixture bestaetigt: auxiliary-Rolle jetzt in ROLE_STYLES_3D/role_order (fdo_mermaid.py), taucht im fdo_overview.mermaid als eigener AUX-Knoten auf; _normalize_license() erkennt jetzt auch creativecommons.org-URLs (Fixture-Lizenz zeigt korrekt CC-BY-4.0 statt der rohen URL); bare-?-Platzhalter durch *n/a* ersetzt (S21-Commit-Message erwaehnt das zusaetzlich, nicht separat angefordert, aber willkommen). Dateizaehler jetzt exakt (25 statt 24 auxiliary lt. der anderen Chat-Zusammenfassung). **Final bestaetigt 2026-09-09** an den echten gerenderten `fdo_overview.png` fuer beide Slugs (Flos Maschine, `mmdc` lokal) -- nicht nur an der Mermaid-Quelle im Sandkasten: CIIC 81 und Freshford zeigen beide exakt 32 Dateien (4 model + 2 metadata + 1 documentation + 25 auxiliary), Freshford mit `CC-BY-4.0` statt roher URL, `v*n/a*` statt `?`. Damit ist die komplette S18-S21-Kette (Rollen, `creators[].id`, kein JPG, Overview-Diagramm) end-to-end an Produktionsdaten verifiziert. `fdo-3d-packager` hat damit keine offenen Punkte mehr, die den `fdo-squirrel`-S10-Release blockieren wuerden | 2026-09-09 (S21 upstream) |
 | fdo-squirrel v1.0.0 released -- Pin auf Tag statt Commit-Hash umgestellt | `fdo-squirrel` hat sein erstes echtes Release (`v1.0.0`, Commit `48bbf4d`, reiner Versions-Bump ueber dem bereits getesteten `3868e1e`, keine funktionalen Aenderungen). Requirements.txt zeigt jetzt auf `fdo-squirrel@v1.0.0` statt einen nackten Commit-Hash -- **Aenderung am bisherigen "immer Commit-Hash"-Muster (A4, "Gepinnte Laufzeit")**, Flos Entscheidung: ein Tag ist genauso fix wie ein Commit-Hash, aber lesbarer, jetzt wo es einen echten Release gibt. Nebeneffekt real bestaetigt: `FDOx.yaml`s `generator.version` zeigt jetzt `1.0.0` statt der bisher wenig aussagekraeftigen `0.3.1` -- die frueher notierte Luecke ("kein Commit im Output erkennbar") ist damit fuer Releases praktisch geschlossen, auch ohne eigene Aenderung an `fdo_manifest.py` | 2026-09-09 |
-| Pin auf `fdo-squirrel` (S14, zuletzt `v1.2.1`) | `v1.1.0` brachte `ro-crate-metadata.json` (RO-Crate 1.2) und die Landing Page mit Signposting ins Bundle, `v1.2.0` das neue Output-Layout (Bundle + vier lose Dateien, Rest in `_work/`). Der Pin springt direkt von `v1.0.1` auf `v1.2.0`. Keine Codeänderung nötig: `build_fdo` liest `fdo-metadata.ttl` und `*-fdo-bundle.zip` weiterhin direkt aus `dist/<slug>_release/`, `--publish-only` räumt mit `rmtree`/`unlink` auf (auch `_work/`), die CI prüft `fdo-metadata.ttl` im Release-Ordner. Flos Entscheidung im Dialog: nur Pin und Doku, kein `--base-url`-Durchreichen, keine Crate-Prüfung in der CI | 2026-11-16 |
+| Pin auf `fdo-squirrel` (S14, zuletzt `v1.3.0`, S21) | `v1.1.0` brachte `ro-crate-metadata.json` (RO-Crate 1.2) und die Landing Page mit Signposting ins Bundle, `v1.2.0` das neue Output-Layout (Bundle + vier lose Dateien, Rest in `_work/`). Der Pin springt direkt von `v1.0.1` auf `v1.2.0`. Keine Codeänderung nötig: `build_fdo` liest `fdo-metadata.ttl` und `*-fdo-bundle.zip` weiterhin direkt aus `dist/<slug>_release/`, `--publish-only` räumt mit `rmtree`/`unlink` auf (auch `_work/`), die CI prüft `fdo-metadata.ttl` im Release-Ordner. Flos Entscheidung im Dialog: nur Pin und Doku, kein `--base-url`-Durchreichen, keine Crate-Prüfung in der CI | 2026-11-16 |
+| Sketchfab-Quelle als `isDerivedFrom` (S21) | `mdcff` schreibt weiter automatisch `isDerivedFrom` auf die Sketchfab-Seite des Modells; mit `fdo-squirrel` `v1.3.0` wird daraus `prov:wasDerivedFrom` (TTL) und `isBasedOn` (Crate). Bei einer Rekonstruktion stehen damit Sketchfab-Seite und Scan nebeneinander, unterscheidbar an IRI und Label. Flos Entscheidung im Dialog (`fdo-squirrel` A4, 2026-11-17): bleibt `isDerivedFrom`, kein neuer Enum-Wert, keine Umstellung. Ein Override von `related_resources` ersetzt das ganze Feld, die Sketchfab-Quelle wird dann von Hand wieder eingetragen | 2026-11-17 |
 | `dist/` aufgeräumt: Zwischenstände nach `dist/_build/` (S15) | Vorher lagen pro Slug drei Dinge direkt in `dist/`: `<slug>/` (convert/nexus/mdcff), `<slug>.zip` (bundle) und `<slug>_release/` (build_fdo). Jetzt `dist/_build/<slug>/` und `dist/_build/<slug>.zip`, oben bleibt nur `dist/<slug>_release/`. Eigener Name `_build` statt `_work`, damit er nicht mit dem `_work/` in `<slug>_release/` (fdo-squirrel) verwechselt wird. Die Pfade laufen über `build_dir()`, `bundle_zip()`, `release_dir()` in `fdo_3d_packager_utils.py`; `--from`/`--skip`/`--all-slugs`/`--publish-only` unverändert (letzteres entfernt ein leeres `dist/_build/` mit). Flos Entscheidung im Dialog; `dist/` insgesamt gitignored (bisher war nichts daraus versioniert, ein Bundle sind zig MB). Altbestand: einmaliger cmd-Einzeiler in der README, Fehlermeldung von `build_fdo` weist darauf hin | 2026-11-16 |
 | Was bedeutet "Release" fuer fdo-3d-packager selbst (S13)? | v1.0.0, wie bei fdo-squirrel -- soll den Code-Stand dokumentieren, der CIIC 81 + Freshford erzeugt hat, und ueber die GitHub-Zenodo-Integration einen Software-DOI bekommen (Archivierung). Kein PyPI-Paket, kein main.py-Schritt -- dieses Repo hat keine Downstream-Konsumenten, die einen Pin brauchen, anders als fdo-squirrel. CITATION.cff (Version, Datum, identifiers-Platzhalter fuer die DOI) ist der einzige Deliverable-Unterschied zum jetzigen Stand | 2026-09-09 (S13) |
 
@@ -277,6 +278,7 @@ Nicht anwendbar in S1 — dieses Repo veröffentlicht selbst keine RDF-IRIs
 | S18 | Schritt `validate`: `rocrate-validator` auf das fertige Bundle (`dist/<slug>_release/<slug>-fdo-bundle.zip`), `--rocrate-validator-bin`; `network=True` | fdo-3d-packager | S7, S16 | **vorbereitet 2026-11-16** (echter Validator-Lauf bei Flo erfolgreich, 63/0/3) |
 | S19 | `--log DATEI`: gesamte Terminalausgabe eines Laufs (inkl. Blender, nxsbuild, Validator) zusätzlich in eine `.md`/`.txt`-Datei; Unterprozesse laufen über `run_command()` | fdo-3d-packager | S18 | **vorbereitet 2026-11-16** (Windows-Lauf bei Flo offen) |
 | S20 | `mdcff`: `spatial` vervollständigen -- `lat`+`lon` -> `wkt`, `POINT(...)` -> `lat`/`lon`; Warnungen bei Widerspruch, Wertebereich, einzelnem `lat`/`lon` | fdo-3d-packager | S10 | **vorbereitet 2026-11-16** |
+| S21 | Pin auf `fdo-squirrel@v1.3.0` (Relationstyp und `note` von `related_resources` in TTL und Crate, getrennte Blank Nodes), Doku | fdo-3d-packager | S14, `fdo-squirrel` `v1.3.0` getaggt | **vorbereitet 2026-11-17** (`v1.3.0` ist getaggt, Pin kann angewendet werden) |
 
 S3 und S4 sind technisch unabhängig von S5 und können in beliebiger
 Reihenfolge bzw. parallel in Angriff genommen werden; S5 braucht die
@@ -2367,6 +2369,39 @@ mit `lat`/`lon`-Override (RDF und RO-Crate haben den Punkt), 10 Fälle für
 und mit `--strict` als Fehler). Nicht verifiziert: `--log` unter Windows (echte
 Konsole, Blender/nxsbuild-Ausgabe), weil dort kein Blender und kein Windows läuft.
 
+## S21 — Pin auf fdo-squirrel v1.3.0
+
+**Anlass:** Die vier LEGO-Pyramiden-FDOx (Scan und Rekonstruktion, 2026-11-17) sind
+die ersten Modelle, die miteinander verknüpft sind. Dafür behält `fdo-squirrel`
+ab `v1.3.0` den Relationstyp von `related_resources` (TTL: typisiertes Prädikat
+neben `dct:relation`, Crate: `isBasedOn`/`isPartOf`/`citation`) und die `note`
+(DCAT-Relationship in der TTL, `description` des Ziels im Crate). Dazu ein
+Fix: Werte ohne `id` teilten sich einen Blank Node (`_:obj1`).
+
+**Substanz:** `requirements.txt`: `fdo-squirrel@v1.2.1` -> `@v1.3.0`, Kommentar;
+Docstring in `py/step_build_fdo.py`. Kein Code, keine CI-Änderung (wie S14).
+Beschluss zur Sketchfab-Quelle: A4. Die vier Pyramiden-FDOx wurden mit dem
+lokalen `v1.3.0`-Stand gebaut (Override-Dateien unter
+`data/local-metadata/<slug>/`, `id` und Links als DOIs); alle vier Crates
+bestehen `rocrate-validator` (66 Checks, 63 bestanden, 3 übersprungen, 0
+fehlgeschlagen).
+
+**Reihenfolge:** erst anwenden, wenn `fdo-squirrel` `v1.3.0` getaggt ist (ist es,
+2026-11-17).
+
+**Abnahme:** nach `pip install --upgrade --force-reinstall --no-deps
+"fdo-squirrel @ git+https://github.com/FDOx-squirrel/fdo-squirrel.git@v1.3.0"`
+läuft `python main.py --only build_fdo --slug <slug>` durch, das `[validate]`
+meldet das Crate als gültig, `FDOx.yaml` und das Crate nennen `1.3.0`; die CI ist
+grün.
+
+### Vorbereitet 2026-11-17
+
+CI-Rauchtest (Fixture, gefälschte Binaries, `--strict`, danach `--publish-only`
+mit den Prüfungen aus `build.yml`) in der Sandbox mit dem installierten
+`v1.3.0`-Tag aus GitHub durchgespielt. Den Rundlauf mit echten Modellen hat Flo
+schon gemacht (siehe oben).
+
 ---
 
 ## Teil D — Offene Punkte
@@ -2389,7 +2424,13 @@ Liste enthält ab jetzt nur, was tatsächlich noch offen ist.)*
   `identifiers[]`-Eintrag (`{scheme: doi, value: ...}`, Muster
   `example_fdo/MD.cff`) ergänzen, beides manuell nach dem Upload.
   Automatisierung zurückgestellt, bis `fdo-squirrel-md-generator` als
-  interaktiver Zwischenschritt steht.
+  interaktiver Zwischenschritt steht. Seit den Pyramiden-FDOx (2026-11-17)
+  geht es auch vorab: Zenodo vergibt die DOI schon beim Anlegen des Entwurfs;
+  `id` (MD.cff) und `doi` (CITATION.cff) stehen dann im Override unter
+  `data/local-metadata/<slug>/`. `mdcff` meldet das als Warnung „overrides
+  structural field(s) id -- almost always a wrong-slug override"; hier ist es
+  gewollt, die Meldung ist an dieser Stelle Rauschen (möglicher Fix: nur
+  warnen, wenn der Wert noch ein Platzhalter ist; eigene Entscheidung).
 - **Eigenes menschenlesbares Begleit-YAML** zusätzlich zu `MD.cff`? Tendenz
   weiterhin: nein, nur eine Quelle der Wahrheit -- nicht endgültig
   entschieden.

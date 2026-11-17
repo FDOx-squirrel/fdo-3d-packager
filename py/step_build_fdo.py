@@ -67,7 +67,8 @@ Output goes to dist/<slug>_release/ (fdo-squirrel's own re-zipped "finished
 FDO bundle", which since fdo-squirrel v1.1.0 is also an RO-Crate, plus
 fdo-metadata.ttl, ro-crate-metadata.json, the HTML modelling report and
 fdo_overview.png; since v1.2.0 every other generated file sits in
-dist/<slug>_release/_work/) -- gitignored, same reasoning as
+dist/<slug>_release/_work/; since v1.3.0 the relation type and note of
+`related_resources` reach the TTL and the crate) -- gitignored, same reasoning as
 fdo-squirrel-registry's dist/release/: a rebuildable byproduct of an
 already-committed source (dist/_build/<slug>.zip itself), not a second citable
 fassung. Zenodo publishing stays a manual step for a human with
